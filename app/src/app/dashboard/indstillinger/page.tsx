@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { listUsers } from '@/lib/users'
 import MaptilerSettingsForm from '@/components/MaptilerSettingsForm'
 import UsersManager from '@/components/UsersManager'
+import { syncFjordHubUsers } from '@/lib/fjordhub'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,6 +12,7 @@ export default async function IndstillingerPage() {
   if (!session) redirect('/login')
   if (!session.isAdmin) redirect('/dashboard/kort')
 
+  await syncFjordHubUsers()
   const users = await listUsers()
 
   return (

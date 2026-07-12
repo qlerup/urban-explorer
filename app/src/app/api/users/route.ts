@@ -3,11 +3,13 @@ import pool from '@/lib/db'
 import { getSession, hashPassword } from '@/lib/auth'
 import { encrypt, hashEmail, normalizeEmail } from '@/lib/crypto'
 import { listUsers } from '@/lib/users'
+import { syncFjordHubUsers } from '@/lib/fjordhub'
 
 export async function GET() {
   const session = await getSession()
   if (!session || !session.isAdmin) return NextResponse.json({ error: 'Ingen adgang' }, { status: 403 })
 
+  await syncFjordHubUsers()
   const users = await listUsers()
   return NextResponse.json({ users })
 }
