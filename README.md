@@ -46,7 +46,7 @@ Første gang du åbner appen, bliver du automatisk sendt til `/setup`, hvor du o
 
 - **Frontend/backend**: Next.js 15 (App Router) + TypeScript
 - **Database**: PostgreSQL 16 med PostGIS (koordinater gemmes både som `latitude`/`longitude` og som `geography(point)`)
-- **Billeder**: valideres på filtype (magic bytes, kun JPG/PNG/WebP) og størrelse (maks 8 MB), gemmes i en Docker volume (`uploads_data`) og serveres via en auth-gated API-rute, så kun ejeren af en pin kan se dens billeder
+- **Billeder**: valideres på filtype (magic bytes, kun JPG/PNG/WebP) og størrelse (maks 8 MB), gemmes i host-mappen fra `UPLOADS_HOST_DIR` (lokal disk eller et monteret NFS-share) og serveres via en auth-gated API-rute, så kun ejeren af en pin kan se dens billeder
 - **Auth**: samme mønster som appens søsterprojekter — Argon2id, JWT (`jose`), httpOnly + `SameSite=strict` cookie, DB-baseret rate limiting på login (5 forsøg, 15 minutters lås)
 
 ## Struktur
