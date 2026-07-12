@@ -4,6 +4,7 @@ import { encrypt, hashEmail } from './crypto'
 export interface FjordHubUser {
   id: number
   username: string
+  email?: string
   role?: 'admin' | 'user'
   hub_role?: 'admin' | 'user'
   first_name?: string
@@ -24,8 +25,8 @@ export function isFjordHubManaged(): boolean {
 }
 
 /** Deterministisk pseudo-email for en hub-bruger, så email_hash kan slås op. */
-function managedEmail(username: string): string {
-  return `${username.trim().toLowerCase()}@fjordhub.local`
+function managedEmail(username: string, email?: string): string {
+  return String(email || '').trim().toLowerCase() || `${username.trim().toLowerCase()}@fjordhub.local`
 }
 
 async function hubRequest(
@@ -120,17 +121,23 @@ export async function ensureManagedLocalUser(
   const recordLogin = options?.recordLogin !== false
   const firstName = String(hubUser.first_name || '').trim() || username
   const isAdmin = (hubUser.role ?? hubUser.hub_role) === 'admin'
-  const emailHash = hashEmail(managedEmail(username))
+  const email = managedEmail(username, hubUser.email)
+  const emailHash = hashEmail(email)
+  const legacyEmailHash = hashEmail(managedEmail(username))
 
-  const existing = await pool.query('SELECT id FROM users WHERE email_hash = $1', [emailHash])
+  const existing = await pool.query(
+    'SELECT id FROM users WHERE email_hash = $1 OR email_hash = $2 ORDER BY (email_hash = $1) DESC LIMIT 1',
+    [emailHash, legacyEmailHash]
+  )
   if (existing.rows[0]) {
-    // Synkronisér navn og rolle fra hubben
+    // Synkronisér navn, email og rolle. En gammel @fjordhub.local-identitet
+    // opgraderes på samme række, så brugerens pins og delinger bevares.
     await pool.query(
-      `UPDATE users SET first_name = $1, is_admin = $2,
-         last_login_at = CASE WHEN $3 THEN NOW() ELSE last_login_at END,
+      `UPDATE users SET first_name = $1, email = $2, email_hash = $3, is_admin = $4,
+         last_login_at = CASE WHEN $5 THEN NOW() ELSE last_login_at END,
          updated_at = NOW()
-       WHERE id = $4`,
-      [encrypt(firstName), isAdmin, recordLogin, existing.rows[0].id]
+       WHERE id = $6`,
+      [encrypt(firstName), encrypt(email), emailHash, isAdmin, recordLogin, existing.rows[0].id]
     )
     return { id: existing.rows[0].id, isAdmin }
   }
@@ -140,7 +147,7 @@ export async function ensureManagedLocalUser(
      VALUES ($1, $2, $3, $4, $5, FALSE, CASE WHEN $6 THEN NOW() ELSE NULL END)
      ON CONFLICT (email_hash) DO UPDATE SET email_hash = EXCLUDED.email_hash
      RETURNING id`,
-    [encrypt(firstName), encrypt(managedEmail(username)), emailHash, MANAGED_PASSWORD_HASH, isAdmin, recordLogin]
+    [encrypt(firstName), encrypt(email), emailHash, MANAGED_PASSWORD_HASH, isAdmin, recordLogin]
   )
   return { id: created.rows[0].id, isAdmin }
 }
