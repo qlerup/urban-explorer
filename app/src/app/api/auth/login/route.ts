@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { verifyPassword, runDummyVerify, createToken, COOKIE_NAME } from '@/lib/auth'
 import { hashEmail, normalizeEmail } from '@/lib/crypto'
-import { authenticateWithFjordHub, ensureManagedLocalUser, isFjordHubManaged } from '@/lib/fjordhub'
+import {
+  authenticateWithFjordHub,
+  ensureManagedLocalUser,
+  isFjordHubManaged,
+  migrateLegacyUsersToFjordHub,
+} from '@/lib/fjordhub'
 
 const MAX_ATTEMPTS = 5
 const LOCK_MINUTES = 15
@@ -18,6 +23,7 @@ export async function POST(req: NextRequest) {
 
     if (isFjordHubManaged()) {
       // Login styres af FjordHub: feltet er hub-brugernavnet
+      await migrateLegacyUsersToFjordHub()
       const hubUser = await authenticateWithFjordHub(String(email).trim(), password)
       if (!hubUser) {
         return NextResponse.json(

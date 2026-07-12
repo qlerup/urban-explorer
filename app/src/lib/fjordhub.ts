@@ -1,5 +1,5 @@
 import pool from './db'
-import { encrypt, hashEmail } from './crypto'
+import { decryptIfEncrypted, encrypt, hashEmail } from './crypto'
 
 export interface FjordHubUser {
   id: number
@@ -12,14 +12,23 @@ export interface FjordHubUser {
   language?: string
 }
 
+interface LegacyUrbanExplorerUser {
+  id: string
+  first_name: string
+  email: string
+  password_hash: string
+  is_admin: boolean
+}
+
 // Sentinel i password_hash for hub-styrede brugere: kan aldrig verificeres
 // som Argon2, så lokalt password-login er automatisk blokeret for dem.
 const MANAGED_PASSWORD_HASH = 'fjordhub-managed'
+let legacyUserMigration: Promise<void> | null = null
 
 export function isFjordHubManaged(): boolean {
   return Boolean(
+    process.env.FJORDHUB_APP_ID === 'urban-explorer' &&
     process.env.FJORDHUB_URL &&
-    process.env.FJORDHUB_APP_ID &&
     process.env.FJORDHUB_API_KEY
   )
 }
@@ -68,6 +77,60 @@ async function hubRequest(
   }
 }
 
+async function migrateLegacyUsers(): Promise<void> {
+  try {
+    const localUsers = await pool.query<LegacyUrbanExplorerUser>(
+      `SELECT id, first_name, email, password_hash, is_admin
+       FROM users
+       WHERE fjordhub_migrated_at IS NULL
+         AND password_hash LIKE '$argon2%'`
+    )
+    let migratedCount = 0
+
+    for (const localUser of localUsers.rows) {
+      const email = decryptIfEncrypted(localUser.email).trim().toLowerCase()
+      if (!email) {
+        console.error('[fjordhub] Kan ikke migrere bruger uden email:', localUser.id)
+        continue
+      }
+
+      const result = await hubRequest('/api/hub/apps/users', {
+        first_name: decryptIfEncrypted(localUser.first_name).trim(),
+        email,
+        password_hash: localUser.password_hash,
+        role: localUser.is_admin ? 'admin' : 'user',
+      })
+      if (result.ok !== true) {
+        console.error('[fjordhub] Kunne ikke migrere bruger:', localUser.id, result.error || 'ukendt fejl')
+        continue
+      }
+
+      await pool.query(
+        'UPDATE users SET fjordhub_migrated_at = NOW(), updated_at = NOW() WHERE id = $1 AND fjordhub_migrated_at IS NULL',
+        [localUser.id]
+      )
+      migratedCount += 1
+    }
+
+    if (migratedCount > 0) {
+      console.log(`[fjordhub] Migrerede ${migratedCount} eksisterende brugere til FjordHub`)
+    }
+  } catch (error) {
+    console.error('[fjordhub] Kunne ikke migrere eksisterende brugere:', error)
+  }
+}
+
+/** Overfor kun lokale Argon2-brugere, når Urban Explorer styres af FjordHub. */
+export async function migrateLegacyUsersToFjordHub(): Promise<void> {
+  if (!isFjordHubManaged()) return
+  if (!legacyUserMigration) {
+    legacyUserMigration = migrateLegacyUsers().finally(() => {
+      legacyUserMigration = null
+    })
+  }
+  await legacyUserMigration
+}
+
 export async function authenticateWithFjordHub(
   username: string,
   password: string
@@ -96,6 +159,7 @@ export async function listFjordHubUsers(): Promise<FjordHubUser[]> {
  */
 export async function syncFjordHubUsers(): Promise<void> {
   if (!isFjordHubManaged()) return
+  await migrateLegacyUsersToFjordHub()
   const hubUsers = await listFjordHubUsers()
   for (const hubUser of hubUsers) {
     try {
