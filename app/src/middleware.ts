@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth-edge'
 
-const PUBLIC_PATHS = ['/', '/login', '/setup', '/api/setup', '/api/auth/login', '/api/cadastre', '/share', '/api/share']
+const PUBLIC_PATHS = ['/', '/login', '/setup', '/api/setup', '/api/auth/login', '/api/cadastre', '/share', '/api/share', '/hub-login', '/api/health']
 const CHANGE_PASSWORD_PATHS = ['/skift-adgangskode', '/api/auth/change-password', '/api/auth/logout']
 
 export async function middleware(req: NextRequest) {

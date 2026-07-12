@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-export default function LoginForm() {
+export default function LoginForm({ hubManaged = false }: { hubManaged?: boolean }) {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -37,8 +37,17 @@ export default function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1.5">Email</label>
-        <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} required autoFocus />
+        <label className="block text-sm font-medium text-gray-300 mb-1.5">
+          {hubManaged ? 'FjordHub-brugernavn' : 'Email'}
+        </label>
+        <input
+          className="input"
+          type={hubManaged ? 'text' : 'email'}
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          required
+          autoFocus
+        />
       </div>
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-1.5">Adgangskode</label>

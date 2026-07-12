@@ -1,18 +1,21 @@
 import { redirect } from 'next/navigation'
 import pool from '@/lib/db'
 import { getSession } from '@/lib/auth'
+import { isFjordHubManaged } from '@/lib/fjordhub'
 import LoginForm from '@/components/LoginForm'
 
 export const dynamic = 'force-dynamic'
 
 export default async function LoginPage() {
+  const hubManaged = isFjordHubManaged()
+
   let userCount = 0
   try {
     const result = await pool.query('SELECT COUNT(*)::int AS count FROM users')
     userCount = result.rows[0].count
   } catch { /* fortsæt til login hvis DB fejler */ }
 
-  if (userCount === 0) redirect('/setup')
+  if (userCount === 0 && !hubManaged) redirect('/setup')
 
   const session = await getSession()
   if (session) redirect('/dashboard/kort')
@@ -27,7 +30,7 @@ export default async function LoginPage() {
         </div>
 
         <div className="card">
-          <LoginForm />
+          <LoginForm hubManaged={hubManaged} />
         </div>
       </div>
     </main>

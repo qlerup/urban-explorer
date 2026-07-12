@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { verifyPassword, runDummyVerify, createToken, COOKIE_NAME } from '@/lib/auth'
 import { hashEmail, normalizeEmail } from '@/lib/crypto'
+import { authenticateWithFjordHub, ensureManagedLocalUser, isFjordHubManaged } from '@/lib/fjordhub'
 
 const MAX_ATTEMPTS = 5
 const LOCK_MINUTES = 15
@@ -13,6 +14,32 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email og adgangskode er påkrævet' }, { status: 400 })
+    }
+
+    if (isFjordHubManaged()) {
+      // Login styres af FjordHub: feltet er hub-brugernavnet
+      const hubUser = await authenticateWithFjordHub(String(email).trim(), password)
+      if (!hubUser) {
+        return NextResponse.json(
+          { error: 'Forkert login eller ingen adgang til Urban Explorer i FjordHub' },
+          { status: 401 }
+        )
+      }
+      const user = await ensureManagedLocalUser(hubUser)
+      const token = await createToken({
+        userId: user.id,
+        isAdmin: user.isAdmin,
+        mustChangePassword: false,
+      })
+      const response = NextResponse.json({ success: true })
+      response.cookies.set(COOKIE_NAME, token, {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 12 * 60 * 60,
+        path: '/',
+      })
+      return response
     }
 
     const emailClean = normalizeEmail(email)

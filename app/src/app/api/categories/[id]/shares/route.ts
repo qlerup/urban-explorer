@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { listUsers } from '@/lib/users'
+import { syncFjordHubUsers } from '@/lib/fjordhub'
 
 async function ownsCategory(categoryId: string, userId: string): Promise<boolean> {
   const result = await pool.query('SELECT 1 FROM categories WHERE id = $1 AND user_id = $2', [categoryId, userId])
@@ -17,6 +18,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!(await ownsCategory(id, session.userId))) {
     return NextResponse.json({ error: 'Kategori ikke fundet' }, { status: 404 })
   }
+
+  // Hub-styrede brugere oprettes lokalt, så de kan vælges før første login
+  await syncFjordHubUsers()
 
   const [allUsers, sharesResult] = await Promise.all([
     listUsers(),

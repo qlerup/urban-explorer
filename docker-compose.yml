@@ -24,6 +24,8 @@ services:
     restart: unless-stopped
     ports:
       - "${APP_PORT:-3001}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       DATABASE_URL: postgresql://urbanexplorer:${DB_PASSWORD}@db:5432/urbanexplorer
       JWT_SECRET: ${JWT_SECRET}
@@ -31,6 +33,9 @@ services:
       MAPTILER_KEY: ${MAPTILER_KEY:-}
       NODE_ENV: production
       TZ: ${TZ:-Europe/Copenhagen}
+      FJORDHUB_URL: ${FJORDHUB_URL:-}
+      FJORDHUB_APP_ID: ${FJORDHUB_APP_ID:-urban-explorer}
+      FJORDHUB_API_KEY: ${FJORDHUB_API_KEY:-}
     volumes:
       - uploads_data:/app/uploads
     depends_on:
