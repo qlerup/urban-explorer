@@ -37,7 +37,7 @@ services:
       FJORDHUB_APP_ID: ${FJORDHUB_APP_ID:-urban-explorer}
       FJORDHUB_API_KEY: ${FJORDHUB_API_KEY:-}
     volumes:
-      - uploads_data:/app/uploads
+      - ${UPLOADS_HOST_DIR:-uploads_data}:/app/uploads
     depends_on:
       db:
         condition: service_healthy
