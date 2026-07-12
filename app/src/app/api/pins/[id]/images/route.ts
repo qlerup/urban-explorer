@@ -1,0 +1,43 @@
+import { NextRequest, NextResponse } from 'next/server'
+import pool from '@/lib/db'
+import { getSession } from '@/lib/auth'
+import { getPinAccess } from '@/lib/access'
+import { saveImage, MAX_IMAGE_BYTES } from '@/lib/uploads'
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Ingen adgang' }, { status: 401 })
+
+  const { id } = await params
+
+  const access = await getPinAccess(id, session.userId)
+  if (!access) return NextResponse.json({ error: 'Pin ikke fundet' }, { status: 404 })
+  if (!access.canEdit) return NextResponse.json({ error: 'Du har kun læseadgang til denne pin' }, { status: 403 })
+
+  const formData = await req.formData().catch(() => null)
+  const file = formData?.get('file')
+  if (!file || !(file instanceof File)) {
+    return NextResponse.json({ error: 'Ingen fil modtaget' }, { status: 400 })
+  }
+
+  if (file.size > MAX_IMAGE_BYTES) {
+    return NextResponse.json({ error: 'Billedet er for stort (maks 8 MB)' }, { status: 400 })
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const saved = await saveImage(id, buffer)
+  if (!saved) {
+    return NextResponse.json({ error: 'Ugyldigt billedformat. Kun JPG, PNG og WebP er tilladt.' }, { status: 400 })
+  }
+
+  const result = await pool.query(
+    `INSERT INTO pin_images (pin_id, filename, original_name, mime_type, size_bytes)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    [id, saved.filename, file.name.slice(0, 255), saved.mimeType, saved.sizeBytes]
+  )
+
+  return NextResponse.json({
+    image: { id: result.rows[0].id, originalName: file.name, url: `/api/pins/${id}/images/${result.rows[0].id}` },
+  })
+}
