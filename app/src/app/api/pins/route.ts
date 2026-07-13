@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { getPinsForUser, mapPinRow } from '@/lib/pins'
-import { canUseCategory } from '@/lib/categories'
 import { isPinStatus, PIN_ICON_OPTIONS } from '@/types/pin'
 
 export async function GET() {
@@ -26,6 +25,7 @@ export async function POST(req: NextRequest) {
   const status = isPinStatus(body.status) ? body.status : 'vil_se'
   const icon = typeof body.icon === 'string' && PIN_ICON_OPTIONS.includes(body.icon) ? body.icon : '📍'
   const categoryId = typeof body.categoryId === 'string' && body.categoryId ? body.categoryId : null
+  const ownerId = typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : session.userId
 
   if (!name || name.length > 200) {
     return NextResponse.json({ error: 'Navn er påkrævet (maks 200 tegn)' }, { status: 400 })
@@ -40,10 +40,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Rating skal være mellem 0 og 3' }, { status: 400 })
   }
 
-  if (categoryId) {
-    // Egen kategori eller en kategori delt med redigeringsret
-    if (!(await canUseCategory(session.userId, categoryId))) {
-      return NextResponse.json({ error: 'Ugyldig kategori' }, { status: 400 })
+  if (ownerId === session.userId) {
+    if (categoryId) {
+      const ownCategory = await pool.query('SELECT 1 FROM categories WHERE id = $1 AND user_id = $2', [categoryId, session.userId])
+      if ((ownCategory.rowCount ?? 0) === 0) {
+        return NextResponse.json({ error: 'Ugyldig kategori' }, { status: 400 })
+      }
+    }
+  } else if (categoryId) {
+    const access = await pool.query(
+      `SELECT 1 FROM categories c
+       JOIN category_shares cs ON cs.category_id = c.id
+       WHERE c.id = $1 AND c.user_id = $2 AND cs.shared_with_id = $3 AND cs.can_edit`,
+      [categoryId, ownerId, session.userId]
+    )
+    if ((access.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: 'Du kan ikke oprette pins i denne kategori' }, { status: 403 })
+    }
+  } else {
+    const access = await pool.query(
+      `SELECT 1 FROM uncategorized_pin_shares
+       WHERE owner_id = $1 AND shared_with_id = $2 AND can_edit`,
+      [ownerId, session.userId]
+    )
+    if ((access.rowCount ?? 0) === 0) {
+      return NextResponse.json({ error: 'Du kan ikke oprette ukategoriserede pins her' }, { status: 403 })
     }
   }
 
@@ -51,12 +72,15 @@ export async function POST(req: NextRequest) {
     `INSERT INTO pins (user_id, name, description, latitude, longitude, location, rating, status, icon, category_id)
      VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326)::geography, $6, $7, $8, $9)
      RETURNING id, name, description, latitude, longitude, rating, status, icon, category_id, created_at`,
-    [session.userId, name, description, latitude, longitude, rating, status, icon, categoryId]
+    [ownerId, name, description, latitude, longitude, rating, status, icon, categoryId]
   )
 
   const row = result.rows[0]
   const category = categoryId
     ? (await pool.query('SELECT id, name, color FROM categories WHERE id = $1', [categoryId])).rows[0]
+    : null
+  const owner = ownerId !== session.userId
+    ? (await pool.query('SELECT first_name FROM users WHERE id = $1', [ownerId])).rows[0]
     : null
 
   return NextResponse.json({
@@ -65,6 +89,9 @@ export async function POST(req: NextRequest) {
       category_id: category?.id ?? null,
       category_name: category?.name ?? null,
       category_color: category?.color ?? null,
+      owner_id: ownerId !== session.userId ? ownerId : null,
+      owner_first_name: owner?.first_name ?? null,
+      can_edit: true,
       images: [],
     }),
   })

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getSession } from '@/lib/auth'
 import { getPinsForUser } from '@/lib/pins'
-import { getCategoriesForUser, getCategoriesSharedWithUser } from '@/lib/categories'
+import { getCategoriesForUser, getCategoriesSharedWithUser, getSharedWorkspacesForUser } from '@/lib/categories'
 import { getGridCellsForUser } from '@/lib/grid'
 import { getMaptilerKey } from '@/lib/settings'
 import MapView from '@/components/MapView'
@@ -34,10 +34,11 @@ export default async function KortPage({ searchParams }: { searchParams: Promise
     )
   }
 
-  const [pins, categories, sharedCategories, gridCells, { pin }] = await Promise.all([
+  const [pins, categories, sharedCategories, sharedWorkspaces, gridCells, { pin }] = await Promise.all([
     getPinsForUser(session.userId),
     getCategoriesForUser(session.userId),
     getCategoriesSharedWithUser(session.userId),
+    getSharedWorkspacesForUser(session.userId),
     getGridCellsForUser(session.userId),
     searchParams,
   ])
@@ -47,6 +48,7 @@ export default async function KortPage({ searchParams }: { searchParams: Promise
       maptilerKey={maptilerKey}
       initialPins={pins}
       categories={[...categories, ...sharedCategories]}
+      sharedWorkspaces={sharedWorkspaces}
       initialGridCells={gridCells}
       focusPinId={pin}
     />

@@ -18,6 +18,8 @@ interface Props {
   onToggleRoute?: (routeId: string) => void
   onEditRoute?: (route: PinRoute) => void
   readOnly?: boolean
+  createOwnerId?: string
+  allowUncategorized?: boolean
 }
 
 interface StagedImage {
@@ -25,7 +27,7 @@ interface StagedImage {
   previewUrl: string
 }
 
-export default function PinModal({ coords, pin, categories, onClose, onCreated, onUpdated, onDeleted, visibleRouteId, onToggleRoute, onEditRoute, readOnly }: Props) {
+export default function PinModal({ coords, pin, categories, onClose, onCreated, onUpdated, onDeleted, visibleRouteId, onToggleRoute, onEditRoute, readOnly, createOwnerId, allowUncategorized = true }: Props) {
   const [currentPin, setCurrentPin] = useState<Pin | null>(pin)
   const [name, setName] = useState(pin?.name ?? '')
   const [description, setDescription] = useState(pin?.description ?? '')
@@ -49,6 +51,12 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const lat = currentPin?.latitude ?? coords?.lat ?? 0
   const lng = currentPin?.longitude ?? coords?.lng ?? 0
   const googleMapsUrl = `https://www.google.com/maps/place/${lat},${lng}/@${lat},${lng},18z/data=!3m1!1e3`
+
+  useEffect(() => {
+    if (isCreateMode && !allowUncategorized && !categoryId && assignableCategories[0]) {
+      setCategoryId(assignableCategories[0].id)
+    }
+  }, [allowUncategorized, assignableCategories, categoryId, isCreateMode])
 
   useEffect(() => {
     return () => {
@@ -83,7 +91,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
       const res = await fetch('/api/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), description: description.trim(), latitude: lat, longitude: lng, rating, status, icon, categoryId: categoryId || null }),
+        body: JSON.stringify({ name: name.trim(), description: description.trim(), latitude: lat, longitude: lng, rating, status, icon, categoryId: categoryId || null, ownerId: createOwnerId || null }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -429,7 +437,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
                   className="input"
                   disabled={!isOwnPin}
                 >
-                  <option value="">Ingen kategori</option>
+                  {allowUncategorized && <option value="">Ingen kategori</option>}
                   {assignableCategories.map(cat => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}{cat.sharedBy ? ` · delt af ${cat.sharedBy}` : ''}

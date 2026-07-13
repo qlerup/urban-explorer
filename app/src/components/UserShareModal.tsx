@@ -149,10 +149,10 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
 
         <div className="p-5 space-y-4">
           <p className="text-xs text-gray-500">
-            Vælg en bruger og hvad der deles. Delte pins vises på brugerens kort og under
-            &quot;Mine pins&quot;, og de kan selv slå visningen til og fra i kortets filterpanel.{' '}
+            Vælg en bruger og hvad der deles. Brugeren kan skifte mellem sit eget kort og dit delte
+            arbejdsområde i filterpanelet. Pins, kategorier og 1x1 km-gitter følger det valgte område.{' '}
             <strong className="text-gray-400">Se</strong>: kan kun kigge.{' '}
-            <strong className="text-gray-400">Rediger</strong>: kan redigere delte pins og tilføje pins i delte kategorier.
+            <strong className="text-gray-400">Rediger</strong>: kan redigere og tilføje pins samt opdatere dit gitter.
           </p>
 
           {loading ? (

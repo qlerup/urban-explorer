@@ -24,8 +24,17 @@ export interface Category {
   shareCount?: number
   /** Ejerens fornavn - kun sat på kategorier der er delt med dig */
   sharedBy?: string
+  ownerId?: string
   /** Om du må tilføje/redigere pins - kun relevant når sharedBy er sat */
   canEdit?: boolean
+}
+
+export interface SharedWorkspace {
+  ownerId: string
+  ownerName: string
+  canEdit: boolean
+  uncategorized: boolean
+  canEditUncategorized: boolean
 }
 
 export const PIN_ICON_OPTIONS = ['📍', '🏭', '🏚️', '🏥', '🏫', '🚉', '🏰', '⛪', '🌉', '🕳️', '🏢', '🚢', '🎪', '🏊', '🛖', '⚙️']

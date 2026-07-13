@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type * as Leaflet from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Category, Pin, PinRoute, PinStatus, RoutePoint } from '@/types/pin'
+import type { Category, Pin, PinRoute, PinStatus, RoutePoint, SharedWorkspace } from '@/types/pin'
 import { PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS } from '@/types/pin'
 import PinModal from './PinModal'
 import SharePickerModal from './SharePickerModal'
@@ -51,6 +51,7 @@ interface Props {
   maptilerKey: string
   initialPins: Pin[]
   categories: Category[]
+  sharedWorkspaces?: SharedWorkspace[]
   initialGridCells?: GridCellData[]
   focusPinId?: string
   readOnly?: boolean
@@ -279,7 +280,7 @@ function parseCoordinateSearch(input: string): SearchCoordinates | null {
   return null
 }
 
-export default function MapView({ maptilerKey, initialPins, categories, initialGridCells, focusPinId, readOnly }: Props) {
+export default function MapView({ maptilerKey, initialPins, categories, sharedWorkspaces = [], initialGridCells, focusPinId, readOnly }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<Leaflet.Map | null>(null)
   const leafletRef = useRef<typeof Leaflet | null>(null)
@@ -289,6 +290,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
   const nativeDblClickCleanupRef = useRef<(() => void) | null>(null)
   const lastPointerTypeRef = useRef<string>('mouse')
   const lastGridClickRef = useRef<{ key: string; time: number } | null>(null)
+  const workspaceCanEditRef = useRef(true)
   const measureLayerRef = useRef<Leaflet.LayerGroup | null>(null)
   const viewRouteLayerRef = useRef<Leaflet.LayerGroup | null>(null)
   const gridLayerRef = useRef<Leaflet.LayerGroup | null>(null)
@@ -298,6 +300,9 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
   const cadastralRequestIdRef = useRef(0)
   const [mapReady, setMapReady] = useState(false)
   const [pins, setPins] = useState<Pin[]>(initialPins)
+  const [activeWorkspaceOwnerId, setActiveWorkspaceOwnerId] = useState<string | null>(
+    () => initialPins.find(pin => pin.id === focusPinId)?.ownerId ?? null
+  )
   const [newPinCoords, setNewPinCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [pendingCenter, setPendingCenter] = useState<{ purpose: 'new-pin' | 'route-point' } | null>(null)
   const [measureMode, setMeasureMode] = useState<'measure' | 'route' | null>(null)
@@ -339,18 +344,20 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
   const [selectedPin, setSelectedPin] = useState<Pin | null>(focusPin)
   const selectedMapLayer = MAP_LAYERS.find(layer => layer.id === mapLayerId) ?? MAP_LAYERS[0]
 
-  const ownCategories = categories.filter(c => !c.sharedBy)
-  const sharedCategories = categories.filter(c => c.sharedBy)
-  const sharedUncatOwners = useMemo(() => {
-    const owners = new Map<string, string>()
-    for (const pin of pins) {
-      if (pin.ownerId && pin.ownerName && !pin.category) owners.set(pin.ownerId, pin.ownerName)
-    }
-    return Array.from(owners, ([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'da'))
-  }, [pins])
-  const sharedFilterKeys = [...sharedCategories.map(c => c.id), ...sharedUncatOwners.map(owner => sharedUncatKey(owner.id))]
-  const allSharedActive = sharedFilterKeys.length > 0 && sharedFilterKeys.every(key => activeCategoryIds.has(key))
+  const ownCategories = categories.filter(c => !c.ownerId)
+  const activeWorkspace = activeWorkspaceOwnerId
+    ? sharedWorkspaces.find(workspace => workspace.ownerId === activeWorkspaceOwnerId) ?? null
+    : null
+  const workspaceCanEdit = !activeWorkspaceOwnerId || activeWorkspace?.canEdit === true
+  const workspaceAllowsUncategorized = !activeWorkspaceOwnerId || activeWorkspace?.uncategorized === true
+  const workspaceCanCreateUncategorized = !activeWorkspaceOwnerId || activeWorkspace?.canEditUncategorized === true
+  const workspaceCategories = categories.filter(category =>
+    activeWorkspaceOwnerId ? category.ownerId === activeWorkspaceOwnerId : !category.ownerId
+  )
+  const workspacePins = pins.filter(pin =>
+    activeWorkspaceOwnerId ? pin.ownerId === activeWorkspaceOwnerId : !pin.ownerId
+  )
+  workspaceCanEditRef.current = workspaceCanEdit
 
   function toggleCategory(id: string) {
     setActiveCategoryIds(prev => {
@@ -360,16 +367,19 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
     })
   }
 
-  function toggleAllShared() {
+  function selectWorkspace(ownerId: string | null) {
+    setActiveWorkspaceOwnerId(ownerId)
     setActiveCategoryIds(prev => {
       const next = new Set(prev)
-      if (allSharedActive) {
-        sharedFilterKeys.forEach(key => next.delete(key))
-      } else {
-        sharedFilterKeys.forEach(key => next.add(key))
-      }
+      if (ownerId) next.add(sharedUncatKey(ownerId)); else next.add(NO_CATEGORY)
+      categories
+        .filter(category => ownerId ? category.ownerId === ownerId : !category.ownerId)
+        .forEach(category => next.add(category.id))
       return next
     })
+    setSelectedPin(null)
+    setNewPinCoords(null)
+    setPendingCenter(null)
   }
 
   function toggleStatus(s: PinStatus) {
@@ -403,6 +413,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
     if (!map || !pendingCenter) return
     const center = map.getCenter()
     if (pendingCenter.purpose === 'new-pin') {
+      if (!workspaceCanEditRef.current) return
       setNewPinCoords({ lat: center.lat, lng: center.lng })
     } else {
       setMeasurePoints(prev => [...prev, { lat: center.lat, lng: center.lng }])
@@ -415,6 +426,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
   }
 
   function toggleMeasureMode(mode: 'measure' | 'route') {
+    if (mode === 'route' && !workspaceCanEdit) return
     setMeasureMode(prev => (prev === mode ? null : mode))
     setMeasurePoints([])
     setShowRoutePicker(false)
@@ -553,7 +565,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
   }
 
   async function toggleGridCell(row: number, col: number) {
-    if (readOnly) return
+    if (readOnly || !workspaceCanEdit) return
     const key = gridCellKey(row, col)
     const willBeSearched = !searchedCells.has(key)
     setSearchedCells(prev => {
@@ -565,7 +577,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
       const res = await fetch('/api/grid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ row, col, searched: willBeSearched }),
+        body: JSON.stringify({ row, col, searched: willBeSearched, ownerId: activeWorkspaceOwnerId }),
       })
       if (!res.ok) throw new Error('Kunne ikke gemme feltet')
     } catch {
@@ -647,13 +659,32 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
   const visiblePins = useMemo(
     () => {
       if (!pinsVisible) return []
-      return pins.filter(pin => {
+      return workspacePins.filter(pin => {
         const catKey = pinCategoryKey(pin)
         return activeCategoryIds.has(catKey) && activeStatuses.has(pin.status) && activeRatings.has(pin.rating)
       })
     },
-    [pins, pinsVisible, activeCategoryIds, activeStatuses, activeRatings]
+    [workspacePins, pinsVisible, activeCategoryIds, activeStatuses, activeRatings]
   )
+
+  useEffect(() => {
+    let cancelled = false
+    const query = activeWorkspaceOwnerId ? `?ownerId=${encodeURIComponent(activeWorkspaceOwnerId)}` : ''
+    void fetch(`/api/grid${query}`)
+      .then(async response => {
+        if (!response.ok) throw new Error('Kunne ikke hente gitter')
+        return response.json()
+      })
+      .then(data => {
+        if (cancelled) return
+        const cells = Array.isArray(data.cells) ? data.cells as GridCellData[] : []
+        setSearchedCells(new Set(cells.map(cell => gridCellKey(cell.row, cell.col))))
+      })
+      .catch(() => {
+        if (!cancelled) setSearchedCells(new Set())
+      })
+    return () => { cancelled = true }
+  }, [activeWorkspaceOwnerId])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -721,6 +752,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
               btn.title = title
               btn.innerHTML = glyph
               L.DomEvent.on(btn, 'click', L.DomEvent.stop).on(btn, 'click', () => {
+                if (mode === 'route' && !workspaceCanEditRef.current) return
                 setMeasureMode(prev => (prev === mode ? null : mode))
                 setMeasurePoints([])
                 setShowRoutePicker(false)
@@ -738,6 +770,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
 
         map.on('click', (e: Leaflet.LeafletMouseEvent) => {
           if (!measureModeRef.current) return
+          if (measureModeRef.current === 'route' && !workspaceCanEditRef.current) return
           if (lastPointerTypeRef.current === 'touch') {
             // Svært at ramme præcist med en finger - centrér kortet og lad brugeren finjustere før bekræftelse.
             map.panTo(e.latlng, { animate: true, duration: 0.4 })
@@ -765,6 +798,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
             return
           }
           domEvent.preventDefault()
+          if (!workspaceCanEditRef.current) return
           const latlng = map.mouseEventToLatLng(domEvent)
           setSelectedPin(null)
           setMeasureMode(null)
@@ -937,11 +971,11 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
               weight: searched ? 1.5 : 1,
               fillColor: '#22c55e',
               fillOpacity: searched ? 0.35 : 0,
-              interactive: !readOnly,
-              className: readOnly ? '' : 'ue-grid-cell',
+              interactive: !readOnly && workspaceCanEdit,
+              className: readOnly || !workspaceCanEdit ? '' : 'ue-grid-cell',
             }
           )
-          if (!readOnly) {
+          if (!readOnly && workspaceCanEdit) {
             rect.on('click', (event: Leaflet.LeafletMouseEvent) => {
               const originalEvent = event.originalEvent
               originalEvent.preventDefault()
@@ -967,7 +1001,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
       gridLayerRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gridEnabled, searchedCells, mapReady, readOnly])
+  }, [gridEnabled, searchedCells, mapReady, readOnly, workspaceCanEdit, activeWorkspaceOwnerId])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1499,11 +1533,45 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
               </button>
             </div>
           )}
-          {categories.length > 0 && (
+          {!readOnly && sharedWorkspaces.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-400 mb-1.5">Visning</p>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  onClick={() => selectWorkspace(null)}
+                  className={`text-xs font-semibold px-3 py-2 rounded-lg border text-left transition-colors ${
+                    !activeWorkspaceOwnerId
+                      ? 'border-rust-500 bg-rust-700/40 text-white'
+                      : 'border-void-600 text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  Vis mine
+                </button>
+                <p className="text-[11px] text-gray-500 mt-1">Delt med dig</p>
+                {sharedWorkspaces.map(workspace => (
+                  <button
+                    key={workspace.ownerId}
+                    onClick={() => selectWorkspace(workspace.ownerId)}
+                    className={`text-xs font-semibold px-3 py-2 rounded-lg border text-left transition-colors ${
+                      activeWorkspaceOwnerId === workspace.ownerId
+                        ? 'border-rust-500 bg-rust-700/40 text-white'
+                        : 'border-void-600 text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    {workspace.ownerName}
+                    <span className="block text-[10px] font-normal text-gray-500 mt-0.5">
+                      {workspace.canEdit ? 'Kan redigere' : 'Kan se'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {(workspaceCategories.length > 0 || workspaceAllowsUncategorized) && (
             <div>
               <p className="text-xs text-gray-400 mb-1.5">Kategorier</p>
               <div className="flex flex-col gap-1.5 items-start">
-                {ownCategories.map(cat => (
+                {workspaceCategories.map(cat => (
                   <button
                     key={cat.id}
                     onClick={() => toggleCategory(cat.id)}
@@ -1515,57 +1583,18 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
                     {cat.name}
                   </button>
                 ))}
-                <button
-                  onClick={() => toggleCategory(NO_CATEGORY)}
-                  className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                    activeCategoryIds.has(NO_CATEGORY) ? 'bg-void-700 text-gray-200 border-void-600' : 'text-gray-500 border-void-600 opacity-50'
-                  }`}
-                >
-                  Ingen kategori
-                </button>
-              </div>
-            </div>
-          )}
-          {sharedFilterKeys.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <p className="text-xs text-gray-400">Delt med dig</p>
-                <button
-                  onClick={toggleAllShared}
-                  className="text-[11px] font-medium text-rust-500 hover:text-rust-400 transition-colors"
-                >
-                  {allSharedActive ? 'Skjul alle' : 'Vis alle'}
-                </button>
-              </div>
-              <div className="flex flex-col gap-1.5 items-start">
-                {sharedCategories.map(cat => (
+                {workspaceAllowsUncategorized && (
                   <button
-                    key={cat.id}
-                    onClick={() => toggleCategory(cat.id)}
+                    onClick={() => toggleCategory(activeWorkspaceOwnerId ? sharedUncatKey(activeWorkspaceOwnerId) : NO_CATEGORY)}
                     className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                      activeCategoryIds.has(cat.id) ? 'text-white' : 'text-gray-400 border-void-600 opacity-50'
+                      activeCategoryIds.has(activeWorkspaceOwnerId ? sharedUncatKey(activeWorkspaceOwnerId) : NO_CATEGORY)
+                        ? 'bg-void-700 text-gray-200 border-void-600'
+                        : 'text-gray-500 border-void-600 opacity-50'
                     }`}
-                    style={activeCategoryIds.has(cat.id) ? { backgroundColor: cat.color, borderColor: cat.color } : undefined}
                   >
-                    {cat.name} · {cat.sharedBy}
+                    Ingen kategori
                   </button>
-                ))}
-                {sharedUncatOwners.map(owner => {
-                  const key = sharedUncatKey(owner.id)
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => toggleCategory(key)}
-                      className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                        activeCategoryIds.has(key)
-                          ? 'bg-void-700 text-gray-200 border-void-600'
-                          : 'text-gray-500 border-void-600 opacity-50'
-                      }`}
-                    >
-                      Uden kategori · {owner.name}
-                    </button>
-                  )
-                })}
+                )}
               </div>
             </div>
           )}
@@ -1618,7 +1647,9 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
         <PinModal
           coords={newPinCoords}
           pin={selectedPin}
-          categories={categories}
+          categories={workspaceCategories}
+          createOwnerId={activeWorkspaceOwnerId ?? undefined}
+          allowUncategorized={workspaceCanCreateUncategorized}
           onClose={() => {
             setNewPinCoords(null)
             setSelectedPin(null)
@@ -1646,14 +1677,14 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
             setSelectedPin(null)
             setNewPinCoords(null)
           }}
-          readOnly={readOnly || selectedPin?.canEdit === false}
+          readOnly={readOnly || (!selectedPin && !workspaceCanEdit) || selectedPin?.canEdit === false}
         />
       )}
 
       {sharePickerOpen && (
         <SharePickerModal
           pins={pins.filter(p => !p.ownerName)}
-          categories={categories}
+          categories={ownCategories}
           onClose={() => setSharePickerOpen(false)}
         />
       )}
@@ -1662,7 +1693,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
 
       {showRoutePicker && measurePoints.length >= 2 && (
         <SaveRouteModal
-          pins={pins.filter(p => p.canEdit !== false)}
+          pins={workspacePins.filter(p => p.canEdit !== false)}
           points={measurePoints}
           onClose={() => setShowRoutePicker(false)}
           onSaved={(pinId, route) => {
