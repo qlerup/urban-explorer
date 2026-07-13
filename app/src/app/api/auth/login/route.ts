@@ -31,6 +31,13 @@ export async function POST(req: NextRequest) {
           { status: 401 }
         )
       }
+      if (hubUser.must_change_password) {
+        // Første login efter oprettelse: brugeren skal selv vælge en ny adgangskode
+        return NextResponse.json(
+          { passwordChangeRequired: true, error: 'Du skal vælge en ny adgangskode før du kan logge ind' },
+          { status: 403 }
+        )
+      }
       const user = await ensureManagedLocalUser(hubUser)
       const token = await createToken({
         userId: user.id,
