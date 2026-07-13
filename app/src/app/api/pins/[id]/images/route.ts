@@ -21,13 +21,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   if (file.size > MAX_IMAGE_BYTES) {
-    return NextResponse.json({ error: 'Billedet er for stort (maks 8 MB)' }, { status: 400 })
+    return NextResponse.json({ error: 'Billedet er for stort (maks 250 MB)' }, { status: 400 })
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer())
-  const saved = await saveImage(id, buffer)
+  const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
+  if (!['jpg', 'jpeg', 'png'].includes(extension)) {
+    return NextResponse.json({ error: 'Kun JPG, JPEG og PNG kan uploades.' }, { status: 400 })
+  }
+
+  const saved = await saveImage(id, file)
   if (!saved) {
-    return NextResponse.json({ error: 'Ugyldigt billedformat. Kun JPG, PNG og WebP er tilladt.' }, { status: 400 })
+    return NextResponse.json({ error: 'Billedet kunne ikke behandles. Kun gyldige JPG-, JPEG- og PNG-filer er tilladt.' }, { status: 400 })
   }
 
   const result = await pool.query(

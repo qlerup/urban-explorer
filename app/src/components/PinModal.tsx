@@ -27,6 +27,38 @@ interface StagedImage {
   previewUrl: string
 }
 
+const IMAGE_ACCEPT = '.jpg,.jpeg,.png,image/jpeg,image/png'
+const MAX_UPLOAD_BYTES = 250 * 1024 * 1024
+
+function imageFileError(file: File): string | null {
+  const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
+  if (!['jpg', 'jpeg', 'png'].includes(extension)) return `${file.name}: Kun JPG, JPEG og PNG er tilladt.`
+  if (file.size > MAX_UPLOAD_BYTES) return `${file.name}: Billedet er større end 250 MB.`
+  return null
+}
+
+function uploadPinImage(pinId: string, file: File, onProgress: (percent: number) => void): Promise<PinImage> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `/api/pins/${pinId}/images`)
+    xhr.responseType = 'json'
+    xhr.upload.onprogress = event => {
+      if (event.lengthComputable && event.total > 0) onProgress(Math.round((event.loaded / event.total) * 100))
+    }
+    xhr.onerror = () => reject(new Error('Netværksfejl under upload'))
+    xhr.onload = () => {
+      const data = xhr.response && typeof xhr.response === 'object'
+        ? xhr.response as { image?: PinImage; error?: string }
+        : {}
+      if (xhr.status >= 200 && xhr.status < 300 && data.image) resolve(data.image)
+      else reject(new Error(data.error || 'Kunne ikke uploade billede'))
+    }
+    const formData = new FormData()
+    formData.append('file', file)
+    xhr.send(formData)
+  })
+}
+
 export default function PinModal({ coords, pin, categories, onClose, onCreated, onUpdated, onDeleted, visibleRouteId, onToggleRoute, onEditRoute, readOnly, createOwnerId, allowUncategorized = true }: Props) {
   const [currentPin, setCurrentPin] = useState<Pin | null>(pin)
   const [name, setName] = useState(pin?.name ?? '')
@@ -38,6 +70,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const [stagedImages, setStagedImages] = useState<StagedImage[]>([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deletingRouteId, setDeletingRouteId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -67,9 +100,38 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
 
   function handleStageFiles(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files?.length) return
-    const added = Array.from(e.target.files).map(file => ({ file, previewUrl: URL.createObjectURL(file) }))
+    const files = Array.from(e.target.files)
+    const firstError = files.map(imageFileError).find((message): message is string => !!message)
+    if (firstError) setError(firstError)
+    const added = files
+      .filter(file => !imageFileError(file))
+      .map(file => ({ file, previewUrl: URL.createObjectURL(file) }))
     setStagedImages(prev => [...prev, ...added])
     if (stagedFileInputRef.current) stagedFileInputRef.current.value = ''
+  }
+
+  async function uploadFiles(pinId: string, files: File[]): Promise<PinImage[]> {
+    if (!files.length) return []
+    setUploading(true)
+    setUploadProgress(0)
+    const uploaded: PinImage[] = []
+    try {
+      for (let index = 0; index < files.length; index += 1) {
+        try {
+          const image = await uploadPinImage(pinId, files[index], filePercent => {
+            setUploadProgress(Math.round(((index + filePercent / 100) / files.length) * 100))
+          })
+          uploaded.push(image)
+          setUploadProgress(Math.round(((index + 1) / files.length) * 100))
+        } catch (uploadError) {
+          setError(uploadError instanceof Error ? uploadError.message : 'Kunne ikke uploade billede')
+        }
+      }
+      return uploaded
+    } finally {
+      setUploading(false)
+      setUploadProgress(null)
+    }
   }
 
   function removeStagedImage(index: number) {
@@ -102,19 +164,10 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
       let savedPin: Pin = data.pin
 
       if (stagedImages.length > 0) {
-        setUploading(true)
-        const uploadedImages: PinImage[] = []
-        for (const staged of stagedImages) {
-          const formData = new FormData()
-          formData.append('file', staged.file)
-          const uploadRes = await fetch(`/api/pins/${savedPin.id}/images`, { method: 'POST', body: formData })
-          const uploadData = await uploadRes.json()
-          if (uploadRes.ok) uploadedImages.push(uploadData.image)
-        }
+        const uploadedImages = await uploadFiles(savedPin.id, stagedImages.map(staged => staged.file))
         savedPin = { ...savedPin, images: uploadedImages }
         stagedImages.forEach(s => URL.revokeObjectURL(s.previewUrl))
         setStagedImages([])
-        setUploading(false)
       }
 
       setCurrentPin(savedPin)
@@ -174,26 +227,21 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (!currentPin || !e.target.files?.length) return
-    setUploading(true)
     setError(null)
     try {
-      for (const file of Array.from(e.target.files)) {
-        const formData = new FormData()
-        formData.append('file', file)
-        const res = await fetch(`/api/pins/${currentPin.id}/images`, { method: 'POST', body: formData })
-        const data = await res.json()
-        if (!res.ok) {
-          setError(data.error || 'Kunne ikke uploade billede')
-          continue
-        }
+      const files = Array.from(e.target.files)
+      const firstError = files.map(imageFileError).find((message): message is string => !!message)
+      if (firstError) setError(firstError)
+      const validFiles = files.filter(file => !imageFileError(file))
+      const images = await uploadFiles(currentPin.id, validFiles)
+      for (const image of images) {
         setCurrentPin(prev => {
-          const updated = prev ? { ...prev, images: [...prev.images, data.image] } : prev
+          const updated = prev ? { ...prev, images: [...prev.images, image] } : prev
           if (updated) onUpdated(updated)
           return updated
         })
       }
     } finally {
-      setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -474,7 +522,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
               <input
                 ref={stagedFileInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={IMAGE_ACCEPT}
                 multiple
                 onChange={handleStageFiles}
                 className="hidden"
@@ -523,7 +571,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={IMAGE_ACCEPT}
                 multiple
                 onChange={handleFileChange}
                 className="hidden"
@@ -532,6 +580,21 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
               <label htmlFor="pin-image-input" className="btn-secondary text-sm inline-flex items-center gap-2 cursor-pointer w-full justify-center">
                 {uploading ? 'Uploader...' : '📷 Tilføj billede'}
               </label>
+            </div>
+          )}
+
+          {uploading && uploadProgress !== null && (
+            <div className="space-y-1.5" role="status" aria-live="polite">
+              <div className="flex items-center justify-between text-xs text-gray-400">
+                <span>{uploadProgress >= 100 ? 'Behandler og komprimerer billede...' : 'Uploader billeder...'}</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-void-700">
+                <div
+                  className="h-full rounded-full bg-rust-500 transition-[width] duration-150"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
             </div>
           )}
 
