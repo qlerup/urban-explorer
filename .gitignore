@@ -1,6 +1,7 @@
 .env
 node_modules/
 .next/
-uploads/
+/uploads/
+/app/uploads/
 *.log
 *.tsbuildinfo

@@ -28,35 +28,93 @@ interface StagedImage {
 }
 
 const IMAGE_ACCEPT = '.jpg,.jpeg,.png,image/jpeg,image/png'
-const MAX_UPLOAD_BYTES = 250 * 1024 * 1024
 
 function imageFileError(file: File): string | null {
   const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
   if (!['jpg', 'jpeg', 'png'].includes(extension)) return `${file.name}: Kun JPG, JPEG og PNG er tilladt.`
-  if (file.size > MAX_UPLOAD_BYTES) return `${file.name}: Billedet er større end 250 MB.`
+  if (file.size <= 0) return `${file.name}: Filen er tom.`
   return null
 }
 
-function uploadPinImage(pinId: string, file: File, onProgress: (percent: number) => void): Promise<PinImage> {
+interface ChunkUploadResponse {
+  offset?: number
+  complete?: boolean
+  image?: PinImage
+  error?: string
+}
+
+function uploadImageChunk(
+  url: string,
+  chunk: Blob,
+  offset: number,
+  totalBytes: number,
+  onProgress: (percent: number) => void
+): Promise<ChunkUploadResponse> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', `/api/pins/${pinId}/images`)
+    xhr.open('POST', url)
     xhr.responseType = 'json'
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+    xhr.setRequestHeader('Upload-Offset', String(offset))
     xhr.upload.onprogress = event => {
-      if (event.lengthComputable && event.total > 0) onProgress(Math.round((event.loaded / event.total) * 100))
+      if (event.lengthComputable && totalBytes > 0) {
+        onProgress(Math.min(100, Math.round(((offset + event.loaded) / totalBytes) * 100)))
+      }
     }
     xhr.onerror = () => reject(new Error('Netværksfejl under upload'))
     xhr.onload = () => {
       const data = xhr.response && typeof xhr.response === 'object'
-        ? xhr.response as { image?: PinImage; error?: string }
+        ? xhr.response as ChunkUploadResponse
         : {}
-      if (xhr.status >= 200 && xhr.status < 300 && data.image) resolve(data.image)
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data)
+      else if (xhr.status === 409 && typeof data.offset === 'number' && data.offset !== offset) resolve(data)
       else reject(new Error(data.error || 'Kunne ikke uploade billede'))
     }
-    const formData = new FormData()
-    formData.append('file', file)
-    xhr.send(formData)
+    xhr.send(chunk)
   })
+}
+
+async function uploadPinImage(pinId: string, file: File, onProgress: (percent: number) => void): Promise<PinImage> {
+  const initResponse = await fetch(`/api/pins/${pinId}/images/uploads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: file.name, size: file.size }),
+  })
+  const init = await initResponse.json().catch(() => ({})) as { uploadId?: string; chunkSize?: number; error?: string }
+  if (!initResponse.ok || !init.uploadId || !init.chunkSize) {
+    throw new Error(init.error || 'Kunne ikke starte upload')
+  }
+
+  const uploadUrl = `/api/pins/${pinId}/images/uploads/${init.uploadId}`
+  let offset = 0
+  let completedImage: PinImage | undefined
+  try {
+    while (offset < file.size) {
+      const chunk = file.slice(offset, Math.min(offset + init.chunkSize, file.size))
+      let response: ChunkUploadResponse | null = null
+      let lastError: unknown
+      for (let attempt = 0; attempt < 4 && !response; attempt += 1) {
+        try {
+          response = await uploadImageChunk(uploadUrl, chunk, offset, file.size, onProgress)
+        } catch (error) {
+          lastError = error
+          if (attempt < 3) await new Promise(resolve => window.setTimeout(resolve, 500 * (2 ** attempt)))
+        }
+      }
+      if (!response) throw lastError instanceof Error ? lastError : new Error('Kunne ikke uploade billeddelen')
+      if (typeof response.offset !== 'number' || response.offset <= offset) {
+        throw new Error(response.error || 'Serveren returnerede en ugyldig upload-position')
+      }
+      offset = response.offset
+      if (response.image) completedImage = response.image
+      onProgress(Math.min(100, Math.round((offset / file.size) * 100)))
+    }
+    if (!completedImage) throw new Error('Billedet blev uploadet, men serveren returnerede intet resultat')
+    return completedImage
+  } catch (error) {
+    await fetch(uploadUrl, { method: 'DELETE' }).catch(() => {})
+    throw error
+  }
 }
 
 export default function PinModal({ coords, pin, categories, onClose, onCreated, onUpdated, onDeleted, visibleRouteId, onToggleRoute, onEditRoute, readOnly, createOwnerId, allowUncategorized = true }: Props) {

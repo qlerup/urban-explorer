@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { getPinAccess } from '@/lib/access'
-import { saveImage, MAX_IMAGE_BYTES } from '@/lib/uploads'
+import { saveImage } from '@/lib/uploads'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -18,10 +18,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const file = formData?.get('file')
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ error: 'Ingen fil modtaget' }, { status: 400 })
-  }
-
-  if (file.size > MAX_IMAGE_BYTES) {
-    return NextResponse.json({ error: 'Billedet er for stort (maks 250 MB)' }, { status: 400 })
   }
 
   const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
