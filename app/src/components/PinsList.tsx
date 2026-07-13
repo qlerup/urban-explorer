@@ -10,6 +10,15 @@ import StarRating from './StarRating'
 const NO_CATEGORY = '__none__'
 const THUMBNAIL_ZOOM = 18
 
+function sharedUncatKey(ownerId: string): string {
+  return `__shared_none__:${ownerId}`
+}
+
+function pinCategoryKey(pin: Pin): string {
+  if (pin.category) return pin.category.id
+  return pin.ownerId ? sharedUncatKey(pin.ownerId) : NO_CATEGORY
+}
+
 function latLngToTile(lat: number, lng: number, zoom: number): { x: number; y: number; z: number } {
   const n = 2 ** zoom
   const x = Math.floor(((lng + 180) / 360) * n)
@@ -41,19 +50,35 @@ export default function PinsList({
   const [editingPin, setEditingPin] = useState<Pin | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [activeCategoryIds, setActiveCategoryIds] = useState<Set<string>>(
-    () => new Set([...categories.map(c => c.id), NO_CATEGORY])
+    () => new Set([
+      ...categories.map(c => c.id),
+      NO_CATEGORY,
+      ...initialPins.filter(p => p.ownerId && !p.category).map(p => sharedUncatKey(p.ownerId!)),
+    ])
   )
   const ownCategories = categories.filter(c => !c.sharedBy)
   const sharedCategories = categories.filter(c => c.sharedBy)
-  const allSharedActive = sharedCategories.length > 0 && sharedCategories.every(c => activeCategoryIds.has(c.id))
+  const sharedUncatOwners = useMemo(() => {
+    const owners = new Map<string, string>()
+    for (const pin of pins) {
+      if (pin.ownerId && pin.ownerName && !pin.category) owners.set(pin.ownerId, pin.ownerName)
+    }
+    return Array.from(owners, ([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'da'))
+  }, [pins])
+  const sharedFilterKeys = [
+    ...sharedCategories.map(c => c.id),
+    ...sharedUncatOwners.map(owner => sharedUncatKey(owner.id)),
+  ]
+  const allSharedActive = sharedFilterKeys.length > 0 && sharedFilterKeys.every(key => activeCategoryIds.has(key))
 
   function toggleAllShared() {
     setActiveCategoryIds(prev => {
       const next = new Set(prev)
       if (allSharedActive) {
-        sharedCategories.forEach(c => next.delete(c.id))
+        sharedFilterKeys.forEach(key => next.delete(key))
       } else {
-        sharedCategories.forEach(c => next.add(c.id))
+        sharedFilterKeys.forEach(key => next.add(key))
       }
       return next
     })
@@ -108,20 +133,21 @@ export default function PinsList({
   const filteredPins = useMemo(
     () =>
       pins.filter(pin => {
-        const catKey = pin.category?.id ?? NO_CATEGORY
+        const catKey = pinCategoryKey(pin)
         return activeCategoryIds.has(catKey) && activeStatuses.has(pin.status) && activeRatings.has(pin.rating)
       }),
     [pins, activeCategoryIds, activeStatuses, activeRatings]
   )
 
   const groups = useMemo(() => {
-    const map = new Map<string, { category: Category | null; pins: Pin[] }>()
+    const map = new Map<string, { id: string; category: Category | null; ownerName?: string; pins: Pin[] }>()
     for (const pin of filteredPins) {
-      const key = pin.category?.id ?? NO_CATEGORY
-      if (!map.has(key)) map.set(key, { category: pin.category, pins: [] })
+      const key = pinCategoryKey(pin)
+      if (!map.has(key)) map.set(key, { id: key, category: pin.category, ownerName: pin.ownerName, pins: [] })
       map.get(key)!.pins.push(pin)
     }
     return Array.from(map.values()).sort((a, b) => {
+      if (!a.category && !b.category) return (a.ownerName ?? '').localeCompare(b.ownerName ?? '', 'da')
       if (!a.category) return 1
       if (!b.category) return -1
       return a.category.name.localeCompare(b.category.name, 'da')
@@ -168,7 +194,7 @@ export default function PinsList({
             </div>
           </div>
         )}
-        {sharedCategories.length > 0 && (
+        {sharedFilterKeys.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-gray-500">Delt med dig</p>
@@ -192,6 +218,22 @@ export default function PinsList({
                   {cat.name} · {cat.sharedBy}
                 </button>
               ))}
+              {sharedUncatOwners.map(owner => {
+                const key = sharedUncatKey(owner.id)
+                return (
+                  <button
+                    key={key}
+                    onClick={() => toggleCategory(key)}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                      activeCategoryIds.has(key)
+                        ? 'bg-void-700 text-gray-200 border-void-600'
+                        : 'text-gray-500 border-void-600 opacity-50'
+                    }`}
+                  >
+                    Uden kategori · {owner.name}
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
@@ -242,7 +284,7 @@ export default function PinsList({
         <p className="text-sm text-gray-500 text-center py-10">Ingen pins matcher de valgte filtre.</p>
       ) : (
         groups.map(group => {
-          const groupId = group.category?.id ?? NO_CATEGORY
+          const groupId = group.id
           const isCollapsed = collapsedGroupIds.has(groupId)
 
           return (
@@ -260,12 +302,15 @@ export default function PinsList({
                 {group.category ? group.category.name.charAt(0).toUpperCase() : '—'}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-gray-200 truncate">{group.category?.name ?? 'Ingen kategori'}</span>
+                <span className="block text-sm font-semibold text-gray-200 truncate">
+                  {group.category?.name ?? (group.ownerName ? `Uden kategori · ${group.ownerName}` : 'Ingen kategori')}
+                </span>
                 <span className="block text-xs text-gray-500">
                   {group.pins.length} {group.pins.length === 1 ? 'pin' : 'pins'}
                   {(() => {
                     const meta = group.category ? categories.find(c => c.id === group.category!.id) : undefined
-                    return meta?.sharedBy ? ` · delt af ${meta.sharedBy}` : ''
+                    if (meta?.sharedBy) return ` · delt af ${meta.sharedBy}`
+                    return group.ownerName ? ` · delt af ${group.ownerName}` : ''
                   })()}
                 </span>
               </span>

@@ -8,6 +8,7 @@ import type { Category, Pin, PinRoute, PinStatus, RoutePoint } from '@/types/pin
 import { PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS } from '@/types/pin'
 import PinModal from './PinModal'
 import SharePickerModal from './SharePickerModal'
+import UserShareModal from './UserShareModal'
 import SaveRouteModal from './SaveRouteModal'
 
 interface GridCellData {
@@ -60,6 +61,16 @@ const DEFAULT_ZOOM = 6.5
 const MAP_MAX_NATIVE_ZOOM = 20
 const MAP_MAX_ZOOM = 22
 const NO_CATEGORY = '__none__'
+
+// Filter-nøgle for ukategoriserede pins delt af en anden bruger
+function sharedUncatKey(ownerId: string): string {
+  return `__shared_none__:${ownerId}`
+}
+
+function pinCategoryKey(pin: Pin): string {
+  if (pin.category) return pin.category.id
+  return pin.ownerId ? sharedUncatKey(pin.ownerId) : NO_CATEGORY
+}
 type MapLayerId = 'satellite-v4' | 'hybrid-v4' | 'outdoor-v4'
 interface MapLayerPreviewTile {
   x: number
@@ -295,11 +306,17 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
   const [editingRoute, setEditingRoute] = useState<{ pinId: string; routeId: string } | null>(null)
   const [viewingRouteId, setViewingRouteId] = useState<string | null>(null)
   const [activeCategoryIds, setActiveCategoryIds] = useState<Set<string>>(
-    () => new Set([...categories.map(c => c.id), NO_CATEGORY])
+    () => new Set([
+      ...categories.map(c => c.id),
+      NO_CATEGORY,
+      // Ukategoriserede pins delt med dig: én chip pr. ejer, tændt fra start
+      ...initialPins.filter(p => p.ownerId && !p.category).map(p => sharedUncatKey(p.ownerId!)),
+    ])
   )
   const [activeStatuses, setActiveStatuses] = useState<Set<PinStatus>>(() => new Set(PIN_STATUSES))
   const [activeRatings, setActiveRatings] = useState<Set<number>>(() => new Set([0, 1, 2, 3]))
   const [sharePickerOpen, setSharePickerOpen] = useState(false)
+  const [userShareOpen, setUserShareOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -324,7 +341,16 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
 
   const ownCategories = categories.filter(c => !c.sharedBy)
   const sharedCategories = categories.filter(c => c.sharedBy)
-  const allSharedActive = sharedCategories.length > 0 && sharedCategories.every(c => activeCategoryIds.has(c.id))
+  const sharedUncatOwners = useMemo(() => {
+    const owners = new Map<string, string>()
+    for (const pin of pins) {
+      if (pin.ownerId && pin.ownerName && !pin.category) owners.set(pin.ownerId, pin.ownerName)
+    }
+    return Array.from(owners, ([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'da'))
+  }, [pins])
+  const sharedFilterKeys = [...sharedCategories.map(c => c.id), ...sharedUncatOwners.map(owner => sharedUncatKey(owner.id))]
+  const allSharedActive = sharedFilterKeys.length > 0 && sharedFilterKeys.every(key => activeCategoryIds.has(key))
 
   function toggleCategory(id: string) {
     setActiveCategoryIds(prev => {
@@ -338,9 +364,9 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
     setActiveCategoryIds(prev => {
       const next = new Set(prev)
       if (allSharedActive) {
-        sharedCategories.forEach(c => next.delete(c.id))
+        sharedFilterKeys.forEach(key => next.delete(key))
       } else {
-        sharedCategories.forEach(c => next.add(c.id))
+        sharedFilterKeys.forEach(key => next.add(key))
       }
       return next
     })
@@ -622,7 +648,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
     () => {
       if (!pinsVisible) return []
       return pins.filter(pin => {
-        const catKey = pin.category?.id ?? NO_CATEGORY
+        const catKey = pinCategoryKey(pin)
         return activeCategoryIds.has(catKey) && activeStatuses.has(pin.status) && activeRatings.has(pin.rating)
       })
     },
@@ -1458,12 +1484,20 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
 
           <div className={`${mobileFiltersOpen ? 'block' : 'hidden'} md:block space-y-3`}>
           {!readOnly && (
-            <button
-              onClick={() => setSharePickerOpen(true)}
-              className="btn-secondary text-xs w-full py-2 flex items-center justify-center gap-1.5"
-            >
-              🔗 Del pins
-            </button>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => setUserShareOpen(true)}
+                className="btn-secondary text-xs py-2 flex items-center justify-center gap-1.5"
+              >
+                👥 Del med bruger
+              </button>
+              <button
+                onClick={() => setSharePickerOpen(true)}
+                className="btn-secondary text-xs py-2 flex items-center justify-center gap-1.5"
+              >
+                🔗 Del via link
+              </button>
+            </div>
           )}
           {categories.length > 0 && (
             <div>
@@ -1492,7 +1526,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
               </div>
             </div>
           )}
-          {sharedCategories.length > 0 && (
+          {sharedFilterKeys.length > 0 && (
             <div>
               <div className="flex items-center justify-between gap-2 mb-1.5">
                 <p className="text-xs text-gray-400">Delt med dig</p>
@@ -1516,6 +1550,22 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
                     {cat.name} · {cat.sharedBy}
                   </button>
                 ))}
+                {sharedUncatOwners.map(owner => {
+                  const key = sharedUncatKey(owner.id)
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => toggleCategory(key)}
+                      className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                        activeCategoryIds.has(key)
+                          ? 'bg-void-700 text-gray-200 border-void-600'
+                          : 'text-gray-500 border-void-600 opacity-50'
+                      }`}
+                    >
+                      Uden kategori · {owner.name}
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -1607,6 +1657,8 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
           onClose={() => setSharePickerOpen(false)}
         />
       )}
+
+      {userShareOpen && <UserShareModal onClose={() => setUserShareOpen(false)} />}
 
       {showRoutePicker && measurePoints.length >= 2 && (
         <SaveRouteModal

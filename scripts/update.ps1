@@ -30,10 +30,13 @@ if (Test-Path "$LOCAL\db\migration_003.sql") {
 if (Test-Path "$LOCAL\db\migration_004.sql") {
     & scp -i $KEY "$LOCAL\db\migration_004.sql"  "${CONTAINER}:${REMOTE}/db/migration_004.sql"
 }
+if (Test-Path "$LOCAL\db\migration_005.sql") {
+    & scp -i $KEY "$LOCAL\db\migration_005.sql"  "${CONTAINER}:${REMOTE}/db/migration_005.sql"
+}
 & scp -i $KEY    "$LOCAL\.env"                   "${CONTAINER}:${REMOTE}/.env"
 
 Write-Host "Koerer database-migrationer..." -ForegroundColor Cyan
-ssh -i $KEY $CONTAINER "cd $REMOTE && docker compose up -d db && until docker compose exec -T db pg_isready -U urbanexplorer -d urbanexplorer; do sleep 1; done && docker compose exec -T db psql -U urbanexplorer -d urbanexplorer < db/migration_001.sql && docker compose exec -T db psql -U urbanexplorer -d urbanexplorer < db/migration_002.sql && docker compose exec -T db psql -U urbanexplorer -d urbanexplorer < db/migration_003.sql && docker compose exec -T db psql -U urbanexplorer -d urbanexplorer < db/migration_004.sql"
+ssh -i $KEY $CONTAINER "cd $REMOTE && docker compose up -d db && until docker compose exec -T db pg_isready -U urbanexplorer -d urbanexplorer; do sleep 1; done && docker compose exec -T db psql -U urbanexplorer -d urbanexplorer < db/migration_001.sql && docker compose exec -T db psql -U urbanexplorer -d urbanexplorer < db/migration_002.sql && docker compose exec -T db psql -U urbanexplorer -d urbanexplorer < db/migration_003.sql && docker compose exec -T db psql -U urbanexplorer -d urbanexplorer < db/migration_004.sql && docker compose exec -T db psql -U urbanexplorer -d urbanexplorer < db/migration_005.sql"
 
 Write-Host "Bygger og genstarter app..." -ForegroundColor Cyan
 ssh -i $KEY $CONTAINER "cd $REMOTE && docker compose up -d --build app"

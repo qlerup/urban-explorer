@@ -150,6 +150,20 @@ CREATE TABLE IF NOT EXISTS category_shares (
 
 CREATE INDEX IF NOT EXISTS idx_category_shares_shared_with ON category_shares(shared_with_id);
 CREATE INDEX IF NOT EXISTS idx_category_shares_category_id ON category_shares(category_id);
+
+-- Deling af ejerens pins UDEN kategori til en anden bruger. Kategoriserede
+-- pins deles via category_shares; tilsammen udgør de "del med bruger".
+CREATE TABLE IF NOT EXISTS uncategorized_pin_shares (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    shared_with_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    can_edit       BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (owner_id, shared_with_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_uncat_pin_shares_shared_with ON uncategorized_pin_shares(shared_with_id);
+CREATE INDEX IF NOT EXISTS idx_uncat_pin_shares_owner ON uncategorized_pin_shares(owner_id);
 `
 
 export async function ensureSchema(): Promise<void> {

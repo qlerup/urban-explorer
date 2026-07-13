@@ -29,6 +29,7 @@ interface PinRow {
   images: { id: string; originalName: string }[]
   routes?: PinRoute[]
   can_edit?: boolean
+  owner_id?: string
   owner_first_name?: string | null
 }
 
@@ -58,17 +59,22 @@ function mapRow(row: PinRow): Pin {
     routes: row.routes ?? [],
   }
   if (row.can_edit === false) pin.canEdit = false
-  if (row.owner_first_name) pin.ownerName = decrypt(row.owner_first_name)
+  if (row.owner_first_name) {
+    pin.ownerName = decrypt(row.owner_first_name)
+    pin.ownerId = row.owner_id
+  }
   return pin
 }
 
 export async function getPinsForUser(userId: string): Promise<Pin[]> {
-  // Synlige pins: egne, pins i kategorier delt med brugeren, og andres pins
-  // lagt i brugerens egne kategorier (samarbejde i delte "mapper").
+  // Synlige pins: egne, pins i kategorier delt med brugeren, andres pins
+  // lagt i brugerens egne kategorier (samarbejde i delte "mapper"), og
+  // ukategoriserede pins fra ejere der har delt dem med brugeren.
   const result = await pool.query<PinRow>(
     `SELECT p.id, p.name, p.description, p.latitude, p.longitude, p.rating, p.status, p.icon, p.created_at,
             c.id AS category_id, c.name AS category_name, c.color AS category_color,
-            (p.user_id = $1 OR c.user_id = $1 OR COALESCE(cs.can_edit, FALSE)) AS can_edit,
+            (p.user_id = $1 OR COALESCE(c.user_id = $1, FALSE) OR COALESCE(cs.can_edit, FALSE) OR COALESCE(ups.can_edit, FALSE)) AS can_edit,
+            p.user_id AS owner_id,
             CASE WHEN p.user_id = $1 THEN NULL ELSE u.first_name END AS owner_first_name,
             COALESCE(
               json_agg(json_build_object('id', i.id, 'originalName', i.original_name) ORDER BY i.created_at)
@@ -81,8 +87,10 @@ export async function getPinsForUser(userId: string): Promise<Pin[]> {
      LEFT JOIN pin_images i ON i.pin_id = p.id
      LEFT JOIN categories c ON c.id = p.category_id
      LEFT JOIN category_shares cs ON cs.category_id = p.category_id AND cs.shared_with_id = $1
-     WHERE p.user_id = $1 OR c.user_id = $1 OR cs.category_id IS NOT NULL
-     GROUP BY p.id, c.id, c.name, c.color, cs.can_edit, u.first_name
+     LEFT JOIN uncategorized_pin_shares ups
+       ON ups.owner_id = p.user_id AND ups.shared_with_id = $1 AND p.category_id IS NULL
+     WHERE p.user_id = $1 OR c.user_id = $1 OR cs.category_id IS NOT NULL OR ups.id IS NOT NULL
+     GROUP BY p.id, c.id, c.name, c.color, cs.can_edit, ups.can_edit, u.first_name
      ORDER BY p.created_at DESC`,
     [userId]
   )

@@ -68,4 +68,6 @@ export interface Pin {
   canEdit?: boolean
   /** Ejerens fornavn - kun sat på pins der ikke er dine egne */
   ownerName?: string
+  /** Ejerens id - bruges til at holde delte ukategoriserede pins adskilt pr. ejer */
+  ownerId?: string
 }

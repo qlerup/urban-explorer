@@ -13,7 +13,8 @@ export interface PinAccess {
  * Afgør hvilken adgang brugeren har til en pin. Returnerer null hvis pinnen
  * ikke findes, eller brugeren slet ikke har adgang (heller ikke læseadgang).
  * Adgang opnås som pinnens ejer, som ejer af den kategori pinnen ligger i
- * (samarbejdspins), eller via en kategorideling (vis eller rediger).
+ * (samarbejdspins), via en kategorideling (vis eller rediger), eller via
+ * deling af ejerens ukategoriserede pins.
  */
 export async function getPinAccess(pinId: string, userId: string): Promise<PinAccess | null> {
   const result = await pool.query(
@@ -21,11 +22,15 @@ export async function getPinAccess(pinId: string, userId: string): Promise<PinAc
             p.category_id,
             c.user_id = $2 AS is_category_owner,
             cs.can_edit AS share_can_edit,
-            cs.category_id IS NOT NULL AS is_shared
+            cs.category_id IS NOT NULL AS is_shared,
+            ups.can_edit AS uncat_share_can_edit,
+            ups.id IS NOT NULL AS is_uncat_shared
      FROM pins p
      LEFT JOIN categories c ON c.id = p.category_id
      LEFT JOIN category_shares cs
        ON cs.category_id = p.category_id AND cs.shared_with_id = $2
+     LEFT JOIN uncategorized_pin_shares ups
+       ON ups.owner_id = p.user_id AND ups.shared_with_id = $2 AND p.category_id IS NULL
      WHERE p.id = $1`,
     [pinId, userId]
   )
@@ -34,12 +39,12 @@ export async function getPinAccess(pinId: string, userId: string): Promise<PinAc
   const row = result.rows[0]
   const isOwner = row.is_owner === true
   const isCategoryOwner = row.is_category_owner === true
-  const canView = isOwner || isCategoryOwner || row.is_shared === true
+  const canView = isOwner || isCategoryOwner || row.is_shared === true || row.is_uncat_shared === true
   if (!canView) return null
 
   return {
     isOwner,
-    canEdit: isOwner || isCategoryOwner || row.share_can_edit === true,
+    canEdit: isOwner || isCategoryOwner || row.share_can_edit === true || row.uncat_share_can_edit === true,
     categoryId: row.category_id ?? null,
   }
 }
