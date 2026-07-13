@@ -1484,7 +1484,7 @@ export default function MapView({ maptilerKey, initialPins, categories, initialG
 
           <div className={`${mobileFiltersOpen ? 'block' : 'hidden'} md:block space-y-3`}>
           {!readOnly && (
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className="grid grid-cols-1 gap-1.5">
               <button
                 onClick={() => setUserShareOpen(true)}
                 className="btn-secondary text-xs py-2 flex items-center justify-center gap-1.5"
