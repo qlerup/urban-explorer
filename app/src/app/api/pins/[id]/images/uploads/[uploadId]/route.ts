@@ -97,7 +97,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const completed = await finishImageUpload(uploadId)
   if (!completed.saved) {
-    return NextResponse.json({ error: 'Billedet kunne ikke behandles. Kun gyldige JPG-, JPEG- og PNG-filer er tilladt.' }, { status: 400 })
+    return NextResponse.json({ error: 'Mediefilen kunne ikke behandles eller matchede ikke filtypen.' }, { status: 400 })
   }
 
   try {
@@ -113,6 +113,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       image: {
         id: result.rows[0].id,
         originalName: completed.session.originalName,
+        mimeType: completed.saved.mimeType,
         url: `/api/pins/${id}/images/${result.rows[0].id}`,
       },
     })

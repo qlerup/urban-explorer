@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getPinAccess } from '@/lib/access'
-import { createImageUploadSession, IMAGE_UPLOAD_CHUNK_BYTES } from '@/lib/uploads'
+import { createImageUploadSession, IMAGE_UPLOAD_CHUNK_BYTES, isAllowedMediaFilename } from '@/lib/uploads'
 
 export const runtime = 'nodejs'
 
@@ -17,10 +17,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => null) as { filename?: unknown; size?: unknown } | null
   const filename = typeof body?.filename === 'string' ? body.filename.trim() : ''
   const size = typeof body?.size === 'number' ? body.size : NaN
-  const extension = filename.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
-
-  if (!filename || !['jpg', 'jpeg', 'png'].includes(extension)) {
-    return NextResponse.json({ error: 'Kun JPG, JPEG og PNG kan uploades.' }, { status: 400 })
+  if (!filename || !isAllowedMediaFilename(filename)) {
+    return NextResponse.json({ error: 'Filtypen understøttes ikke. Brug JPG, JPEG, PNG eller en almindelig videofil.' }, { status: 400 })
   }
   if (!Number.isSafeInteger(size) || size <= 0) {
     return NextResponse.json({ error: 'Ugyldig filstørrelse' }, { status: 400 })

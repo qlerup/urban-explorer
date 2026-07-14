@@ -26,7 +26,7 @@ interface PinRow {
   category_id: string | null
   category_name: string | null
   category_color: string | null
-  images: { id: string; originalName: string }[]
+  images: { id: string; originalName: string; mimeType: string }[]
   routes?: PinRoute[]
   can_edit?: boolean
   owner_id?: string
@@ -54,6 +54,7 @@ function mapRow(row: PinRow): Pin {
     images: row.images.map(img => ({
       id: img.id,
       originalName: img.originalName,
+      mimeType: img.mimeType,
       url: `/api/pins/${row.id}/images/${img.id}`,
     })),
     routes: row.routes ?? [],
@@ -77,7 +78,7 @@ export async function getPinsForUser(userId: string): Promise<Pin[]> {
             p.user_id AS owner_id,
             CASE WHEN p.user_id = $1 THEN NULL ELSE u.first_name END AS owner_first_name,
             COALESCE(
-              json_agg(json_build_object('id', i.id, 'originalName', i.original_name) ORDER BY i.created_at)
+              json_agg(json_build_object('id', i.id, 'originalName', i.original_name, 'mimeType', i.mime_type) ORDER BY i.created_at)
               FILTER (WHERE i.id IS NOT NULL),
               '[]'
             ) AS images,
@@ -103,7 +104,7 @@ export async function getPinsByIds(userId: string, pinIds: string[]): Promise<Pi
     `SELECT p.id, p.name, p.description, p.latitude, p.longitude, p.rating, p.status, p.icon, p.created_at,
             c.id AS category_id, c.name AS category_name, c.color AS category_color,
             COALESCE(
-              json_agg(json_build_object('id', i.id, 'originalName', i.original_name) ORDER BY i.created_at)
+              json_agg(json_build_object('id', i.id, 'originalName', i.original_name, 'mimeType', i.mime_type) ORDER BY i.created_at)
               FILTER (WHERE i.id IS NOT NULL),
               '[]'
             ) AS images,

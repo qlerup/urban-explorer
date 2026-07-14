@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS pin_images (
     filename      TEXT NOT NULL,
     original_name TEXT NOT NULL,
     mime_type     TEXT NOT NULL,
-    size_bytes    INT NOT NULL,
+    size_bytes    BIGINT NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

@@ -27,11 +27,24 @@ interface StagedImage {
   previewUrl: string
 }
 
-const IMAGE_ACCEPT = '.jpg,.jpeg,.png,image/jpeg,image/png'
+const VIDEO_EXTENSIONS = ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', '3gp']
+const MEDIA_EXTENSIONS = ['jpg', 'jpeg', 'png', ...VIDEO_EXTENSIONS]
+const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.mp4,.m4v,.mov,.webm,.mkv,.avi,.3gp,image/jpeg,image/png,video/mp4,video/quicktime,video/webm'
+
+function fileExtension(filename: string): string {
+  return filename.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
+}
+
+function isVideoName(filename: string): boolean {
+  return VIDEO_EXTENSIONS.includes(fileExtension(filename))
+}
+
+function isVideoMedia(media: { originalName: string; mimeType?: string }): boolean {
+  return media.mimeType?.startsWith('video/') === true || isVideoName(media.originalName)
+}
 
 function imageFileError(file: File): string | null {
-  const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
-  if (!['jpg', 'jpeg', 'png'].includes(extension)) return `${file.name}: Kun JPG, JPEG og PNG er tilladt.`
+  if (!MEDIA_EXTENSIONS.includes(fileExtension(file.name))) return `${file.name}: Filtypen understøttes ikke.`
   if (file.size <= 0) return `${file.name}: Filen er tom.`
   return null
 }
@@ -68,7 +81,7 @@ function uploadImageChunk(
         : {}
       if (xhr.status >= 200 && xhr.status < 300) resolve(data)
       else if (xhr.status === 409 && typeof data.offset === 'number' && data.offset !== offset) resolve(data)
-      else reject(new Error(data.error || 'Kunne ikke uploade billede'))
+      else reject(new Error(data.error || 'Kunne ikke uploade mediefilen'))
     }
     xhr.send(chunk)
   })
@@ -109,7 +122,7 @@ async function uploadPinImage(pinId: string, file: File, onProgress: (percent: n
       if (response.image) completedImage = response.image
       onProgress(Math.min(100, Math.round((offset / file.size) * 100)))
     }
-    if (!completedImage) throw new Error('Billedet blev uploadet, men serveren returnerede intet resultat')
+    if (!completedImage) throw new Error('Mediefilen blev uploadet, men serveren returnerede intet resultat')
     return completedImage
   } catch (error) {
     await fetch(uploadUrl, { method: 'DELETE' }).catch(() => {})
@@ -182,7 +195,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
           uploaded.push(image)
           setUploadProgress(Math.round(((index + 1) / files.length) * 100))
         } catch (uploadError) {
-          setError(uploadError instanceof Error ? uploadError.message : 'Kunne ikke uploade billede')
+          setError(uploadError instanceof Error ? uploadError.message : 'Kunne ikke uploade mediefilen')
         }
       }
       return uploaded
@@ -316,7 +329,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
 
   async function handleDeletePin() {
     if (!currentPin) return
-    if (!confirm('Slet denne pin og alle tilknyttede billeder?')) return
+    if (!confirm('Slet denne pin og alle tilknyttede billeder og videoer?')) return
     setDeleting(true)
     try {
       const res = await fetch(`/api/pins/${currentPin.id}`, { method: 'DELETE' })
@@ -559,17 +572,21 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
 
           {isCreateMode && (
             <div>
-              <p className="text-xs text-gray-500 mb-2">Billeder</p>
+              <p className="text-xs text-gray-500 mb-2">Billeder og videoer</p>
               {stagedImages.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {stagedImages.map((staged, i) => (
                     <div key={staged.previewUrl} className="relative aspect-square rounded-lg overflow-hidden border border-void-700">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={staged.previewUrl} alt={staged.file.name} className="w-full h-full object-cover" />
+                      {isVideoName(staged.file.name) ? (
+                        <video src={staged.previewUrl} className="w-full h-full object-cover" controls muted playsInline preload="metadata" />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={staged.previewUrl} alt={staged.file.name} className="w-full h-full object-cover" />
+                      )}
                       <button
                         onClick={() => removeStagedImage(i)}
                         className="absolute top-1 right-1 w-6 h-6 bg-black/70 text-white rounded-full text-xs flex items-center justify-center"
-                        aria-label="Fjern billede"
+                        aria-label="Fjern mediefil"
                       >
                         ×
                       </button>
@@ -587,19 +604,23 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
                 id="pin-image-stage-input"
               />
               <label htmlFor="pin-image-stage-input" className="btn-secondary text-sm inline-flex items-center gap-2 cursor-pointer w-full justify-center">
-                📷 Tilføj billede
+                📷 Tilføj billede eller video
               </label>
             </div>
           )}
 
           {!isCreateMode && currentPin && readOnly && currentPin.images.length > 0 && (
             <div>
-              <p className="text-xs text-gray-500 mb-2">Billeder</p>
+              <p className="text-xs text-gray-500 mb-2">Billeder og videoer</p>
               <div className="grid grid-cols-3 gap-2">
                 {currentPin.images.map(img => (
                   <div key={img.id} className="relative aspect-square rounded-lg overflow-hidden border border-void-700">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={img.url} alt={img.originalName} className="w-full h-full object-cover" />
+                    {isVideoMedia(img) ? (
+                      <video src={img.url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={img.url} alt={img.originalName} className="w-full h-full object-cover" />
+                    )}
                   </div>
                 ))}
               </div>
@@ -608,17 +629,21 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
 
           {!isCreateMode && currentPin && !readOnly && (
             <div>
-              <p className="text-xs text-gray-500 mb-2">Billeder</p>
+              <p className="text-xs text-gray-500 mb-2">Billeder og videoer</p>
               {currentPin.images.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {currentPin.images.map(img => (
                     <div key={img.id} className="relative aspect-square rounded-lg overflow-hidden border border-void-700">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={img.url} alt={img.originalName} className="w-full h-full object-cover" />
+                      {isVideoMedia(img) ? (
+                        <video src={img.url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={img.url} alt={img.originalName} className="w-full h-full object-cover" />
+                      )}
                       <button
                         onClick={() => handleDeleteImage(img.id)}
                         className="absolute top-1 right-1 w-6 h-6 bg-black/70 text-white rounded-full text-xs flex items-center justify-center"
-                        aria-label="Slet billede"
+                        aria-label="Slet mediefil"
                       >
                         ×
                       </button>
@@ -636,7 +661,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
                 id="pin-image-input"
               />
               <label htmlFor="pin-image-input" className="btn-secondary text-sm inline-flex items-center gap-2 cursor-pointer w-full justify-center">
-                {uploading ? 'Uploader...' : '📷 Tilføj billede'}
+                {uploading ? 'Uploader...' : '📷 Tilføj billede eller video'}
               </label>
             </div>
           )}
@@ -644,7 +669,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
           {uploading && uploadProgress !== null && (
             <div className="space-y-1.5" role="status" aria-live="polite">
               <div className="flex items-center justify-between text-xs text-gray-400">
-                <span>{uploadProgress >= 100 ? 'Behandler og komprimerer billede...' : 'Uploader billeder...'}</span>
+                <span>{uploadProgress >= 100 ? 'Behandler mediefil...' : 'Uploader mediefiler...'}</span>
                 <span>{uploadProgress}%</span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-void-700">
@@ -663,7 +688,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
               <button onClick={handleClose} className="btn-secondary flex-1">Luk</button>
             ) : isCreateMode ? (
               <button onClick={handleSave} disabled={saving} className="btn-primary">
-                {saving ? (uploading ? 'Uploader billeder...' : 'Gemmer...') : 'Gem pin'}
+                {saving ? (uploading ? 'Uploader mediefiler...' : 'Gemmer...') : 'Gem pin'}
               </button>
             ) : (
               <>

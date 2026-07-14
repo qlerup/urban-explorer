@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getShareScopeByToken } from '@/lib/shares'
-import { readImage } from '@/lib/uploads'
+import { getMediaPath } from '@/lib/uploads'
+import { mediaFileResponse } from '@/lib/media-response'
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ token: string; pinId: string; imageId: string }> }
 ) {
   const { token, pinId, imageId } = await params
@@ -20,17 +21,11 @@ export async function GET(
   ).catch(() => ({ rows: [] as { filename: string; mime_type: string }[] }))
 
   const row = result.rows[0]
-  if (!row) return NextResponse.json({ error: 'Billede ikke fundet' }, { status: 404 })
+  if (!row) return NextResponse.json({ error: 'Mediefil ikke fundet' }, { status: 404 })
 
   try {
-    const buffer = await readImage(pinId, row.filename)
-    return new NextResponse(new Uint8Array(buffer), {
-      headers: {
-        'Content-Type': row.mime_type,
-        'Cache-Control': 'private, max-age=86400',
-      },
-    })
+    return await mediaFileResponse(req, getMediaPath(pinId, row.filename), row.mime_type)
   } catch {
-    return NextResponse.json({ error: 'Billede ikke fundet' }, { status: 404 })
+    return NextResponse.json({ error: 'Mediefil ikke fundet' }, { status: 404 })
   }
 }

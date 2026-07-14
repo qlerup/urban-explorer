@@ -53,7 +53,9 @@ export function buildKml(pins: PinExportRow[]): BuiltKml {
     const icon = pin.icon || DEFAULT_PIN_ICON
     const stars = '★'.repeat(pin.rating) + '☆'.repeat(3 - pin.rating)
     const imageTags = pin.images
-      .map(img => `<img src="images/${escapeXml(img.filename)}" style="max-width:400px" /><br/>`)
+      .map(img => img.mimeType.startsWith('video/')
+        ? `<a href="images/${escapeXml(img.filename)}">Video: ${escapeXml(img.filename)}</a><br/>`
+        : `<img src="images/${escapeXml(img.filename)}" style="max-width:400px" /><br/>`)
       .join('\n')
 
     const description = `<![CDATA[

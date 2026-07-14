@@ -10,6 +10,18 @@ export const IMAGE_UPLOAD_CHUNK_BYTES = 2 * 1024 * 1024
 export const MAX_IMAGE_DIMENSION = 2560
 export const OPTIMIZED_IMAGE_QUALITY = 82
 
+const VIDEO_MIME_BY_EXTENSION: Record<string, string> = {
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  avi: 'video/x-msvideo',
+  '3gp': 'video/3gpp',
+}
+
+export const MEDIA_ACCEPT = ['jpg', 'jpeg', 'png', ...Object.keys(VIDEO_MIME_BY_EXTENSION)]
+
 export interface ImageUploadSession {
   id: string
   pinId: string
@@ -49,6 +61,28 @@ export function sniffImageMime(buffer: Buffer): string | null {
     buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
     buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
   ) return 'image/png'
+  return null
+}
+
+function extensionOf(filename: string): string {
+  return filename.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
+}
+
+export function isAllowedMediaFilename(filename: string): boolean {
+  return MEDIA_ACCEPT.includes(extensionOf(filename))
+}
+
+function sniffVideoMime(buffer: Buffer, filename: string): string | null {
+  const extension = extensionOf(filename)
+  const expectedMime = VIDEO_MIME_BY_EXTENSION[extension]
+  if (!expectedMime || buffer.length < 12) return null
+
+  const isIsoMedia = buffer.subarray(4, 8).toString('ascii') === 'ftyp'
+  if (isIsoMedia && ['mp4', 'm4v', 'mov', '3gp'].includes(extension)) return expectedMime
+  const isEbml = buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3
+  if (isEbml && ['webm', 'mkv'].includes(extension)) return expectedMime
+  const isAvi = buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'AVI '
+  if (isAvi && extension === 'avi') return expectedMime
   return null
 }
 
@@ -101,6 +135,37 @@ async function optimizeImageSource(pinId: string, sourcePath: string): Promise<{
   }
 }
 
+async function storeMediaSource(pinId: string, sourcePath: string, originalName: string): Promise<{ filename: string; mimeType: string; sizeBytes: number } | null> {
+  const header = Buffer.alloc(12)
+  const handle = await open(sourcePath, 'r')
+  let bytesRead = 0
+  try {
+    const result = await handle.read(header, 0, header.length, 0)
+    bytesRead = result.bytesRead
+  } finally {
+    await handle.close()
+  }
+
+  const detected = header.subarray(0, bytesRead)
+  if (sniffImageMime(detected)) return optimizeImageSource(pinId, sourcePath)
+
+  const videoMime = sniffVideoMime(detected, originalName)
+  if (!videoMime) return null
+  const extension = extensionOf(originalName)
+  const dir = pinDir(pinId)
+  await mkdir(dir, { recursive: true })
+  const filename = `${randomUUID()}.${extension}`
+  const finalPath = path.join(dir, filename)
+  try {
+    await rename(sourcePath, finalPath)
+    const stored = await stat(finalPath)
+    return { filename, mimeType: videoMime, sizeBytes: stored.size }
+  } catch {
+    await rm(finalPath, { force: true }).catch(() => {})
+    return null
+  }
+}
+
 export async function saveImage(pinId: string, file: File): Promise<{ filename: string; mimeType: string; sizeBytes: number } | null> {
   if (file.size === 0) return null
 
@@ -111,7 +176,7 @@ export async function saveImage(pinId: string, file: File): Promise<{ filename: 
   try {
     const source = Readable.fromWeb(file.stream() as unknown as import('stream/web').ReadableStream)
     await pipeline(source, createWriteStream(sourcePath, { flags: 'wx' }))
-    return await optimizeImageSource(pinId, sourcePath)
+    return await storeMediaSource(pinId, sourcePath, file.name)
   } finally {
     await rm(sourcePath, { force: true }).catch(() => {})
   }
@@ -162,7 +227,7 @@ export async function finishImageUpload(uploadId: string): Promise<{ session: Im
   const session = await getImageUploadSession(uploadId)
   if (!session || session.offset !== session.totalBytes) throw new Error('Upload er ikke færdig')
   try {
-    const saved = await optimizeImageSource(session.pinId, uploadPartPath(uploadId))
+    const saved = await storeMediaSource(session.pinId, uploadPartPath(uploadId), session.originalName)
     return { session, saved }
   } finally {
     await removeImageUploadSession(uploadId)
@@ -176,6 +241,10 @@ export async function removeImageUploadSession(uploadId: string): Promise<void> 
 
 export async function readImage(pinId: string, filename: string): Promise<Buffer> {
   return readFile(path.join(pinDir(pinId), filename))
+}
+
+export function getMediaPath(pinId: string, filename: string): string {
+  return path.join(pinDir(pinId), filename)
 }
 
 export async function deleteImage(pinId: string, filename: string): Promise<void> {

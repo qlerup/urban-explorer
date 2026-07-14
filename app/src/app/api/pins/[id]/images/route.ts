@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { getPinAccess } from '@/lib/access'
-import { saveImage } from '@/lib/uploads'
+import { isAllowedMediaFilename, saveImage } from '@/lib/uploads'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -20,14 +20,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Ingen fil modtaget' }, { status: 400 })
   }
 
-  const extension = file.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? ''
-  if (!['jpg', 'jpeg', 'png'].includes(extension)) {
-    return NextResponse.json({ error: 'Kun JPG, JPEG og PNG kan uploades.' }, { status: 400 })
+  if (!isAllowedMediaFilename(file.name)) {
+    return NextResponse.json({ error: 'Filtypen understøttes ikke. Brug JPG, JPEG, PNG eller en almindelig videofil.' }, { status: 400 })
   }
 
   const saved = await saveImage(id, file)
   if (!saved) {
-    return NextResponse.json({ error: 'Billedet kunne ikke behandles. Kun gyldige JPG-, JPEG- og PNG-filer er tilladt.' }, { status: 400 })
+    return NextResponse.json({ error: 'Mediefilen kunne ikke behandles eller matchede ikke filtypen.' }, { status: 400 })
   }
 
   const result = await pool.query(
@@ -38,6 +37,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   )
 
   return NextResponse.json({
-    image: { id: result.rows[0].id, originalName: file.name, url: `/api/pins/${id}/images/${result.rows[0].id}` },
+    image: { id: result.rows[0].id, originalName: file.name, mimeType: saved.mimeType, url: `/api/pins/${id}/images/${result.rows[0].id}` },
   })
 }

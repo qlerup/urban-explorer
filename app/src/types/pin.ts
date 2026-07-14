@@ -2,6 +2,7 @@ export interface PinImage {
   id: string
   url: string
   originalName: string
+  mimeType: string
 }
 
 export interface RoutePoint {

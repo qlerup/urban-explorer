@@ -81,11 +81,12 @@ CREATE TABLE IF NOT EXISTS pin_images (
     filename      TEXT NOT NULL,
     original_name TEXT NOT NULL,
     mime_type     TEXT NOT NULL,
-    size_bytes    INT NOT NULL,
+    size_bytes    BIGINT NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_pin_images_pin_id ON pin_images(pin_id);
+ALTER TABLE pin_images ALTER COLUMN size_bytes TYPE BIGINT;
 
 CREATE TABLE IF NOT EXISTS pin_routes (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

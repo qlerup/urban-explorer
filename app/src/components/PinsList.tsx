@@ -10,6 +10,10 @@ import StarRating from './StarRating'
 const NO_CATEGORY = '__none__'
 const THUMBNAIL_ZOOM = 18
 
+function isVideoMedia(media: { originalName: string; mimeType?: string }): boolean {
+  return media.mimeType?.startsWith('video/') === true || /\.(mp4|m4v|mov|webm|mkv|avi|3gp)$/i.test(media.originalName)
+}
+
 function sharedUncatKey(ownerId: string): string {
   return `__shared_none__:${ownerId}`
 }
@@ -120,7 +124,7 @@ export default function PinsList({
   }
 
   async function handleDelete(pin: Pin) {
-    if (!confirm('Slet denne pin og alle tilknyttede billeder?')) return
+    if (!confirm('Slet denne pin og alle tilknyttede billeder og videoer?')) return
     setDeletingId(pin.id)
     try {
       const res = await fetch(`/api/pins/${pin.id}`, { method: 'DELETE' })
@@ -363,14 +367,14 @@ export default function PinsList({
                       </div>
                       {pin.images.length > 0 && (
                         <div className="flex -space-x-2 shrink-0">
-                          {pin.images.slice(0, 3).map(img => (
+                          {pin.images.slice(0, 3).map(img => isVideoMedia(img) ? (
+                            <div key={img.id} className="relative w-8 h-8 rounded-lg overflow-hidden border-2 border-void-900 bg-black">
+                              <video src={img.url} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+                              <span className="absolute inset-0 flex items-center justify-center text-[10px] text-white bg-black/25">▶</span>
+                            </div>
+                          ) : (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              key={img.id}
-                              src={img.url}
-                              alt={img.originalName}
-                              className="w-8 h-8 rounded-lg object-cover border-2 border-void-900"
-                            />
+                            <img key={img.id} src={img.url} alt={img.originalName} className="w-8 h-8 rounded-lg object-cover border-2 border-void-900" />
                           ))}
                           {pin.images.length > 3 && (
                             <div className="w-8 h-8 rounded-lg bg-void-800 border-2 border-void-900 flex items-center justify-center text-[10px] text-gray-400">
