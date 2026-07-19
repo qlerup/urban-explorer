@@ -329,6 +329,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   const [pinsVisible, setPinsVisible] = useState(true)
   const [mapLayerId, setMapLayerId] = useState<MapLayerId>(() => lastMapLayerId)
   const [layerPickerOpen, setLayerPickerOpen] = useState(false)
+  const [mobileLayersOpen, setMobileLayersOpen] = useState(false)
   const [previewTile, setPreviewTile] = useState<MapLayerPreviewTile | null>(null)
   const [gridEnabled, setGridEnabled] = useState(() => lastGridEnabled)
   const [cadastralEnabled, setCadastralEnabled] = useState(() => lastCadastralEnabled)
@@ -472,6 +473,14 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   function togglePinsVisible() {
     if (pinsVisible) setSelectedPin(null)
     setPinsVisible(prev => !prev)
+  }
+
+  function locateUser() {
+    const map = mapRef.current
+    if (!map || !navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(pos => {
+      map.setView([pos.coords.latitude, pos.coords.longitude], 16)
+    })
   }
 
   function chooseMapLayer(layerId: MapLayerId) {
@@ -1160,6 +1169,135 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     }
   }, [visiblePins, mapReady])
 
+  // Deles mellem desktop-panelet og mobil-sheetet. Chips og knapper er større
+  // under md-breakpointet, så de er til at ramme med en finger.
+  const filterSections = (
+    <>
+      {!readOnly && (
+        <div className="grid grid-cols-1 gap-1.5">
+          <button
+            onClick={() => { setUserShareOpen(true); setMobileFiltersOpen(false) }}
+            className="btn-secondary text-sm md:text-xs py-3 md:py-2 flex items-center justify-center gap-1.5"
+          >
+            👥 Del med bruger
+          </button>
+          <button
+            onClick={() => { setSharePickerOpen(true); setMobileFiltersOpen(false) }}
+            className="btn-secondary text-sm md:text-xs py-3 md:py-2 flex items-center justify-center gap-1.5"
+          >
+            🔗 Del via link
+          </button>
+        </div>
+      )}
+      {!readOnly && sharedWorkspaces.length > 0 && (
+        <div>
+          <p className="text-sm md:text-xs text-gray-400 mb-1.5">Visning</p>
+          <div className="flex flex-col gap-1.5">
+            <button
+              onClick={() => selectWorkspace(null)}
+              className={`text-sm md:text-xs font-semibold px-4 py-3 md:px-3 md:py-2 rounded-xl md:rounded-lg border text-left transition-colors ${
+                !activeWorkspaceOwnerId
+                  ? 'border-rust-500 bg-rust-700/40 text-white'
+                  : 'border-void-600 text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              Vis mine
+            </button>
+            <p className="text-xs md:text-[11px] text-gray-500 mt-1">Delt med dig</p>
+            {sharedWorkspaces.map(workspace => (
+              <button
+                key={workspace.ownerId}
+                onClick={() => selectWorkspace(workspace.ownerId)}
+                className={`text-sm md:text-xs font-semibold px-4 py-3 md:px-3 md:py-2 rounded-xl md:rounded-lg border text-left transition-colors ${
+                  activeWorkspaceOwnerId === workspace.ownerId
+                    ? 'border-rust-500 bg-rust-700/40 text-white'
+                    : 'border-void-600 text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                {workspace.ownerName}
+                <span className="block text-[11px] md:text-[10px] font-normal text-gray-500 mt-0.5">
+                  {workspace.canEdit ? 'Kan redigere' : 'Kan se'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {(workspaceCategories.length > 0 || workspaceAllowsUncategorized) && (
+        <div>
+          <p className="text-sm md:text-xs text-gray-400 mb-1.5">Kategorier</p>
+          <div className="flex flex-wrap gap-2 md:flex-col md:gap-1.5 md:items-start">
+            {workspaceCategories.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => toggleCategory(cat.id)}
+                className={`text-sm md:text-xs font-medium px-4 py-2.5 md:px-2.5 md:py-1 rounded-full border transition-colors ${
+                  activeCategoryIds.has(cat.id) ? 'text-white' : 'text-gray-400 border-void-600 opacity-50'
+                }`}
+                style={activeCategoryIds.has(cat.id) ? { backgroundColor: cat.color, borderColor: cat.color } : undefined}
+              >
+                {cat.name}
+              </button>
+            ))}
+            {workspaceAllowsUncategorized && (
+              <button
+                onClick={() => toggleCategory(activeWorkspaceOwnerId ? sharedUncatKey(activeWorkspaceOwnerId) : NO_CATEGORY)}
+                className={`text-sm md:text-xs font-medium px-4 py-2.5 md:px-2.5 md:py-1 rounded-full border transition-colors ${
+                  activeCategoryIds.has(activeWorkspaceOwnerId ? sharedUncatKey(activeWorkspaceOwnerId) : NO_CATEGORY)
+                    ? 'bg-void-700 text-gray-200 border-void-600'
+                    : 'text-gray-500 border-void-600 opacity-50'
+                }`}
+              >
+                Ingen kategori
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      <div>
+        <p className="text-sm md:text-xs text-gray-400 mb-1.5">Mærke</p>
+        <div className="flex flex-wrap gap-2 md:flex-col md:gap-1.5 md:items-start">
+          {PIN_STATUSES.map(s => (
+            <button
+              key={s}
+              onClick={() => toggleStatus(s)}
+              className={`text-sm md:text-xs font-medium px-4 py-2.5 md:px-2.5 md:py-1 rounded-full border transition-colors ${
+                activeStatuses.has(s) ? 'text-white' : 'text-gray-400 border-void-600 opacity-50'
+              }`}
+              style={activeStatuses.has(s) ? { backgroundColor: PIN_STATUS_COLORS[s], borderColor: PIN_STATUS_COLORS[s] } : undefined}
+            >
+              {PIN_STATUS_LABELS[s]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <p className="text-sm md:text-xs text-gray-400 mb-1.5">Rating</p>
+        <div className="flex flex-wrap gap-2 md:flex-col md:gap-1.5 md:items-start">
+          <button
+            onClick={() => toggleRating(0)}
+            className={`text-sm md:text-xs font-medium px-4 py-2.5 md:px-2.5 md:py-1 rounded-full border transition-colors ${
+              activeRatings.has(0) ? 'bg-void-700 text-gray-200 border-void-600' : 'text-gray-500 border-void-600 opacity-50'
+            }`}
+          >
+            Ingen rating
+          </button>
+          {[1, 2, 3].map(r => (
+            <button
+              key={r}
+              onClick={() => toggleRating(r)}
+              className={`text-sm md:text-xs font-medium px-4 py-2.5 md:px-2.5 md:py-1 rounded-full border transition-colors ${
+                activeRatings.has(r) ? 'bg-rust-600 text-white border-rust-600' : 'text-gray-400 border-void-600 opacity-50'
+              }`}
+            >
+              {'★'.repeat(r)}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+
   return (
     <div className="relative w-full h-[calc(100dvh-4rem)]">
       <div ref={containerRef} className="absolute inset-0 bg-void-900" />
@@ -1271,7 +1409,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
 
       <form
         onSubmit={handleSearch}
-        className="absolute top-3 left-3 right-14 z-[1000] md:left-1/2 md:right-auto md:w-[min(28rem,calc(100%-14rem))] md:-translate-x-1/2"
+        className="absolute top-3 left-3 right-3 z-[1000] md:left-1/2 md:right-auto md:w-[min(28rem,calc(100%-14rem))] md:-translate-x-1/2"
       >
         <div className="flex items-center gap-2 bg-void-900/90 backdrop-blur-sm border border-void-600 rounded-xl px-3 py-2 shadow-lg">
           <input
@@ -1287,7 +1425,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
           <button
             type="submit"
             disabled={searching || !searchQuery.trim()}
-            className="shrink-0 rounded-lg bg-rust-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rust-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="shrink-0 rounded-lg bg-rust-600 px-4 py-2.5 text-sm md:px-3 md:py-1.5 md:text-xs font-semibold text-white hover:bg-rust-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {searching ? '...' : 'Søg'}
           </button>
@@ -1299,7 +1437,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         )}
       </form>
 
-      <div className="absolute top-52 right-3 z-[1000] flex flex-col items-end gap-2">
+      <div className="hidden md:flex absolute top-52 right-3 z-[1000] flex-col items-end gap-2">
         <button
           type="button"
           onClick={togglePinsVisible}
@@ -1431,7 +1569,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
                 setSelectedCadastralFeatureId(null)
                 setCadastralCopyState(null)
               }}
-              className="rounded-md px-2 py-1 text-xs font-semibold text-gray-400 hover:bg-void-800 hover:text-gray-100"
+              className="rounded-lg px-3 py-2 text-sm md:rounded-md md:px-2 md:py-1 md:text-xs font-semibold text-gray-400 hover:bg-void-800 hover:text-gray-100"
             >
               Luk
             </button>
@@ -1472,7 +1610,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
                   <button
                     type="button"
                     onClick={() => void copyCadastralBfe(cadastralInfo.parcel.basicPropertyUnitId!)}
-                    className="rounded-md border border-void-600 px-2 py-1 text-xs font-semibold text-gray-300 hover:bg-void-800 hover:text-gray-100"
+                    className="rounded-lg border border-void-600 px-3 py-2 text-sm md:rounded-md md:px-2 md:py-1 md:text-xs font-semibold text-gray-300 hover:bg-void-800 hover:text-gray-100"
                   >
                     {cadastralCopyState?.status === 'copied' && cadastralCopyState.value === cadastralInfo.parcel.basicPropertyUnitId
                       ? 'Kopieret'
@@ -1504,144 +1642,179 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         </div>
       )}
 
-      <div className="absolute top-20 md:top-3 left-3 z-[1000] max-w-[calc(100%-5.5rem)]">
+      {/* Desktop: fast filterpanel. På mobil bor filtrene i bottom sheet'et længere nede. */}
+      <div className="hidden md:block absolute top-3 left-3 z-[1000] max-w-[calc(100%-5.5rem)]">
         <div className="bg-void-900/80 backdrop-blur-sm border border-void-600 rounded-xl shadow-lg p-3 space-y-3 max-h-[calc(100dvh-6rem)] overflow-y-auto">
-          <button
-            type="button"
-            onClick={() => setMobileFiltersOpen(prev => !prev)}
-            className="md:hidden w-full flex items-center justify-between gap-3 text-sm font-semibold text-gray-100"
-            aria-expanded={mobileFiltersOpen}
-          >
-            <span>Filtre</span>
-            <span className="text-gray-500" aria-hidden="true">{mobileFiltersOpen ? '-' : '+'}</span>
-          </button>
-
-          <div className={`${mobileFiltersOpen ? 'block' : 'hidden'} md:block space-y-3`}>
-          {!readOnly && (
-            <div className="grid grid-cols-1 gap-1.5">
-              <button
-                onClick={() => setUserShareOpen(true)}
-                className="btn-secondary text-xs py-2 flex items-center justify-center gap-1.5"
-              >
-                👥 Del med bruger
-              </button>
-              <button
-                onClick={() => setSharePickerOpen(true)}
-                className="btn-secondary text-xs py-2 flex items-center justify-center gap-1.5"
-              >
-                🔗 Del via link
-              </button>
-            </div>
-          )}
-          {!readOnly && sharedWorkspaces.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-400 mb-1.5">Visning</p>
-              <div className="flex flex-col gap-1.5">
-                <button
-                  onClick={() => selectWorkspace(null)}
-                  className={`text-xs font-semibold px-3 py-2 rounded-lg border text-left transition-colors ${
-                    !activeWorkspaceOwnerId
-                      ? 'border-rust-500 bg-rust-700/40 text-white'
-                      : 'border-void-600 text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  Vis mine
-                </button>
-                <p className="text-[11px] text-gray-500 mt-1">Delt med dig</p>
-                {sharedWorkspaces.map(workspace => (
-                  <button
-                    key={workspace.ownerId}
-                    onClick={() => selectWorkspace(workspace.ownerId)}
-                    className={`text-xs font-semibold px-3 py-2 rounded-lg border text-left transition-colors ${
-                      activeWorkspaceOwnerId === workspace.ownerId
-                        ? 'border-rust-500 bg-rust-700/40 text-white'
-                        : 'border-void-600 text-gray-400 hover:text-gray-200'
-                    }`}
-                  >
-                    {workspace.ownerName}
-                    <span className="block text-[10px] font-normal text-gray-500 mt-0.5">
-                      {workspace.canEdit ? 'Kan redigere' : 'Kan se'}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {(workspaceCategories.length > 0 || workspaceAllowsUncategorized) && (
-            <div>
-              <p className="text-xs text-gray-400 mb-1.5">Kategorier</p>
-              <div className="flex flex-col gap-1.5 items-start">
-                {workspaceCategories.map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => toggleCategory(cat.id)}
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                      activeCategoryIds.has(cat.id) ? 'text-white' : 'text-gray-400 border-void-600 opacity-50'
-                    }`}
-                    style={activeCategoryIds.has(cat.id) ? { backgroundColor: cat.color, borderColor: cat.color } : undefined}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-                {workspaceAllowsUncategorized && (
-                  <button
-                    onClick={() => toggleCategory(activeWorkspaceOwnerId ? sharedUncatKey(activeWorkspaceOwnerId) : NO_CATEGORY)}
-                    className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                      activeCategoryIds.has(activeWorkspaceOwnerId ? sharedUncatKey(activeWorkspaceOwnerId) : NO_CATEGORY)
-                        ? 'bg-void-700 text-gray-200 border-void-600'
-                        : 'text-gray-500 border-void-600 opacity-50'
-                    }`}
-                  >
-                    Ingen kategori
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-          <div>
-            <p className="text-xs text-gray-400 mb-1.5">Mærke</p>
-            <div className="flex flex-col gap-1.5 items-start">
-              {PIN_STATUSES.map(s => (
-                <button
-                  key={s}
-                  onClick={() => toggleStatus(s)}
-                  className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                    activeStatuses.has(s) ? 'text-white' : 'text-gray-400 border-void-600 opacity-50'
-                  }`}
-                  style={activeStatuses.has(s) ? { backgroundColor: PIN_STATUS_COLORS[s], borderColor: PIN_STATUS_COLORS[s] } : undefined}
-                >
-                  {PIN_STATUS_LABELS[s]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 mb-1.5">Rating</p>
-            <div className="flex flex-col gap-1.5 items-start">
-              <button
-                onClick={() => toggleRating(0)}
-                className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                  activeRatings.has(0) ? 'bg-void-700 text-gray-200 border-void-600' : 'text-gray-500 border-void-600 opacity-50'
-                }`}
-              >
-                Ingen rating
-              </button>
-              {[1, 2, 3].map(r => (
-                <button
-                  key={r}
-                  onClick={() => toggleRating(r)}
-                  className={`text-xs font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                    activeRatings.has(r) ? 'bg-rust-600 text-white border-rust-600' : 'text-gray-400 border-void-600 opacity-50'
-                  }`}
-                >
-                  {'★'.repeat(r)}
-                </button>
-              ))}
-            </div>
-          </div>
-          </div>
+          {filterSections}
         </div>
       </div>
+
+      {/* Mobil: værktøjsdok over bundnavigationen. Skjules når et kort-overlay
+          (måling, pin-placering, rutevisning, matrikelinfo) selv viser knapper i bunden. */}
+      {mapReady && !measureMode && !pendingCenter && !viewingRoute && !cadastralInfo && (
+        <div className="md:hidden fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] left-1/2 -translate-x-1/2 z-[1200]">
+          <div className="flex items-center gap-1 rounded-full border border-void-600 bg-void-900/90 p-1.5 shadow-xl shadow-black/60 backdrop-blur-md">
+            <button
+              type="button"
+              onClick={locateUser}
+              aria-label="Find min position"
+              className="flex h-12 w-12 items-center justify-center rounded-full text-xl transition-colors active:bg-void-700"
+            >
+              🎯
+            </button>
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => toggleMeasureMode('measure')}
+                  aria-label="Mål afstand"
+                  className="flex h-12 w-12 items-center justify-center rounded-full text-xl transition-colors active:bg-void-700"
+                >
+                  📏
+                </button>
+                {workspaceCanEdit && (
+                  <button
+                    type="button"
+                    onClick={() => toggleMeasureMode('route')}
+                    aria-label="Tegn og gem rute"
+                    className="flex h-12 w-12 items-center justify-center rounded-full text-xl transition-colors active:bg-void-700"
+                  >
+                    📍
+                  </button>
+                )}
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setMobileLayersOpen(true)}
+              aria-label="Kortlag og lag på kortet"
+              className="flex h-12 w-12 items-center justify-center rounded-full text-xl transition-colors active:bg-void-700"
+            >
+              🗺️
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileFiltersOpen(true)}
+              aria-label="Filtre"
+              className="flex h-12 w-12 items-center justify-center rounded-full text-gray-100 transition-colors active:bg-void-700"
+            >
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h18l-7 8v5l-4 2v-7L3 5z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Mobil: filtre som bottom sheet */}
+      {mobileFiltersOpen && (
+        <div
+          className="md:hidden ue-modal-backdrop fixed inset-0 z-[2000] flex items-end bg-black/60"
+          onClick={() => setMobileFiltersOpen(false)}
+        >
+          <div
+            className="ue-modal-panel w-full bg-void-900 rounded-t-2xl border-t border-void-700 max-h-[80dvh] overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-void-600" />
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-void-900 px-5 py-3">
+              <h2 className="font-semibold text-gray-100">Filtre</h2>
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-300 active:bg-void-800"
+              >
+                Luk
+              </button>
+            </div>
+            <div className="space-y-4 px-5 pt-1">
+              {filterSections}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobil: kortlag + lag-toggles som bottom sheet */}
+      {mobileLayersOpen && (
+        <div
+          className="md:hidden ue-modal-backdrop fixed inset-0 z-[2000] flex items-end bg-black/60"
+          onClick={() => setMobileLayersOpen(false)}
+        >
+          <div
+            className="ue-modal-panel w-full bg-void-900 rounded-t-2xl border-t border-void-700 max-h-[80dvh] overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+1.25rem)]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-void-600" />
+            <div className="sticky top-0 z-10 flex items-center justify-between bg-void-900 px-5 py-3">
+              <h2 className="font-semibold text-gray-100">Kortlag</h2>
+              <button
+                type="button"
+                onClick={() => setMobileLayersOpen(false)}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-gray-300 active:bg-void-800"
+              >
+                Luk
+              </button>
+            </div>
+            <div className="space-y-1.5 px-5">
+              {MAP_LAYERS.map(layer => {
+                const active = layer.id === mapLayerId
+                const layerPreviewUrl = previewTile ? mapLayerPreviewUrl(layer.id, maptilerKey, previewTile) : null
+                return (
+                  <button
+                    key={layer.id}
+                    type="button"
+                    onClick={() => chooseMapLayer(layer.id)}
+                    aria-pressed={active}
+                    className={`flex w-full items-center gap-3 rounded-xl border p-2 text-left transition-colors ${
+                      active ? 'border-rust-500 bg-rust-600/15' : 'border-void-700 active:bg-void-800'
+                    }`}
+                  >
+                    <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-void-800 ring-1 ring-void-600">
+                      {layerPreviewUrl && (
+                        <span
+                          className="block h-full w-full bg-cover bg-center"
+                          style={{ backgroundImage: `url("${layerPreviewUrl}")` }}
+                        />
+                      )}
+                    </span>
+                    <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${active ? 'text-white' : 'text-gray-300'}`}>
+                      {layer.label}
+                    </span>
+                    {active && (
+                      <svg className="h-5 w-5 shrink-0 text-rust-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="px-5 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">Lag på kortet</p>
+            <div className="px-5">
+              {[
+                { key: 'pins', label: 'Pins', on: pinsVisible, onToggle: togglePinsVisible, show: true },
+                { key: 'cadastre', label: 'Matrikelkort', on: cadastralEnabled, onToggle: toggleCadastralEnabled, show: true },
+                { key: 'grid', label: 'Søge-gitter (1×1 km)', on: gridEnabled, onToggle: toggleGridEnabled, show: !readOnly },
+              ].filter(t => t.show).map(t => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={t.onToggle}
+                  aria-pressed={t.on}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl px-1 py-3 text-left"
+                >
+                  <span className="text-sm font-medium text-gray-200">{t.label}</span>
+                  <span className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${t.on ? 'bg-rust-600' : 'bg-void-700'}`}>
+                    <span
+                      className={`absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform ${t.on ? 'translate-x-5' : ''}`}
+                    />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {(newPinCoords || selectedPin) && (
         <PinModal

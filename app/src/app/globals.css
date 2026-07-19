@@ -63,6 +63,13 @@ body {
   cursor: pointer;
   border-radius: 4px;
 }
+/* Mobil: zoom/lokation/mål/rute-knapperne (30px) erstattes af værktøjsdokken i bunden.
+   Zoom klares med pinch. */
+@media (max-width: 767px) {
+  .leaflet-top.leaflet-right {
+    display: none;
+  }
+}
 .leaflet-control-attribution {
   background: rgba(13, 17, 23, 0.75) !important;
   color: #9ca3af !important;
