@@ -78,6 +78,51 @@ body {
   color: #e08a3c !important;
 }
 
+/* Brugerens position: prik med puls-ring */
+.ue-locate-dot {
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+.ue-locate-dot span {
+  position: absolute;
+  inset: 3px;
+  border-radius: 9999px;
+  background: #38bdf8;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  animation: ue-locate-appear 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.ue-locate-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: rgba(56, 189, 248, 0.45);
+  animation: ue-locate-pulse 2s ease-out infinite;
+}
+@keyframes ue-locate-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes ue-locate-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  70%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
 .ue-measure-label {
   background: rgba(7, 9, 12, 0.92) !important;
   border: 1px solid #4b5563 !important;

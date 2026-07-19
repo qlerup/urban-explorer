@@ -287,6 +287,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   const markersRef = useRef<globalThis.Map<string, Leaflet.Marker>>(new globalThis.Map())
   const baseLayerRef = useRef<Leaflet.TileLayer | null>(null)
   const searchMarkerRef = useRef<Leaflet.CircleMarker | null>(null)
+  const locateMarkerRef = useRef<Leaflet.Marker | null>(null)
   const nativeDblClickCleanupRef = useRef<(() => void) | null>(null)
   const lastPointerTypeRef = useRef<string>('mouse')
   const lastGridClickRef = useRef<{ key: string; time: number } | null>(null)
@@ -475,11 +476,25 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     setPinsVisible(prev => !prev)
   }
 
-  function locateUser() {
+  function showUserLocation(lat: number, lng: number) {
     const map = mapRef.current
-    if (!map || !navigator.geolocation) return
+    const L = leafletRef.current
+    if (!map || !L) return
+    locateMarkerRef.current?.remove()
+    const icon = L.divIcon({
+      className: '',
+      html: '<div class="ue-locate-dot"><span></span></div>',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    })
+    locateMarkerRef.current = L.marker([lat, lng], { icon, interactive: false }).addTo(map)
+    map.setView([lat, lng], Math.max(map.getZoom(), 16))
+  }
+
+  function locateUser() {
+    if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(pos => {
-      map.setView([pos.coords.latitude, pos.coords.longitude], 16)
+      showUserLocation(pos.coords.latitude, pos.coords.longitude)
     })
   }
 
@@ -742,10 +757,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
           btn.title = 'Find min position'
           btn.innerHTML = '🎯'
           L.DomEvent.on(btn, 'click', L.DomEvent.stop).on(btn, 'click', () => {
-            if (!navigator.geolocation) return
-            navigator.geolocation.getCurrentPosition(pos => {
-              map.setView([pos.coords.latitude, pos.coords.longitude], 16)
-            })
+            locateUser()
           })
           return btn
         },
@@ -850,6 +862,8 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
       baseLayerRef.current = null
       searchMarkerRef.current?.remove()
       searchMarkerRef.current = null
+      locateMarkerRef.current?.remove()
+      locateMarkerRef.current = null
       cadastralLayerRef.current?.remove()
       cadastralLayerRef.current = null
       cadastralHighlightLayerRef.current?.remove()
@@ -1652,7 +1666,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
       {/* Mobil: værktøjsdok over bundnavigationen. Skjules når et kort-overlay
           (måling, pin-placering, rutevisning, matrikelinfo) selv viser knapper i bunden. */}
       {mapReady && !measureMode && !pendingCenter && !viewingRoute && !cadastralInfo && (
-        <div className="md:hidden fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] left-1/2 -translate-x-1/2 z-[1200]">
+        <div className="md:hidden fixed bottom-[calc(env(safe-area-inset-bottom)+6.25rem)] left-1/2 -translate-x-1/2 z-[1200]">
           <div className="flex items-center gap-1 rounded-full border border-void-600 bg-void-900/90 p-1.5 shadow-xl shadow-black/60 backdrop-blur-md">
             <button
               type="button"
