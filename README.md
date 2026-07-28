@@ -48,6 +48,7 @@ Første gang du åbner appen, bliver du automatisk sendt til `/setup`, hvor du o
 - **Database**: PostgreSQL 16 med PostGIS (koordinater gemmes både som `latitude`/`longitude` og som `geography(point)`)
 - **Billeder**: valideres på filtype (magic bytes, kun JPG/PNG/WebP) og størrelse (maks 8 MB), gemmes i host-mappen fra `UPLOADS_HOST_DIR` (lokal disk eller et monteret NFS-share) og serveres via en auth-gated API-rute, så kun ejeren af en pin kan se dens billeder
 - **Auth**: samme mønster som appens søsterprojekter — Argon2id, JWT (`jose`), httpOnly + `SameSite=strict` cookie, DB-baseret rate limiting på login (5 forsøg, 15 minutters lås)
+- **Glemt adgangskode**: admin konfigurerer SMTP under Indstillinger. Solo-installationer sender selv en 6-cifret engangskode, mens FjordHub-installationer bruger FjordHubs centrale mailopsætning og nulstiller hub-kontoen.
 
 ## Struktur
 

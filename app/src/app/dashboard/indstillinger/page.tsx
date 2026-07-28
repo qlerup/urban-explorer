@@ -4,6 +4,7 @@ import { listUsers } from '@/lib/users'
 import MaptilerSettingsForm from '@/components/MaptilerSettingsForm'
 import UsersManager from '@/components/UsersManager'
 import { syncFjordHubUsers } from '@/lib/fjordhub'
+import MailSettingsForm from '@/components/MailSettingsForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +23,10 @@ export default async function IndstillingerPage() {
 
       <div className="card mb-8">
         <MaptilerSettingsForm />
+      </div>
+
+      <div className="card mb-8">
+        <MailSettingsForm />
       </div>
 
       <h2 className="text-lg font-bold text-gray-100 mb-1">Brugere</h2>

@@ -60,3 +60,7 @@ export function normalizeEmail(email: string): string {
 export function hashEmail(email: string): string {
   return createHmac('sha256', getKey()).update(normalizeEmail(email)).digest('base64url')
 }
+
+export function keyedHash(value: string): string {
+  return createHmac('sha256', getKey()).update(value).digest('base64url')
+}

@@ -122,8 +122,32 @@ CREATE INDEX IF NOT EXISTS idx_pin_routes_pin_id ON pin_routes(pin_id);
 CREATE TABLE IF NOT EXISTS app_settings (
     id            SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
     maptiler_key  TEXT,
+    smtp_user     TEXT,
+    smtp_password TEXT,
+    smtp_host     TEXT,
+    smtp_port     INTEGER,
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_user TEXT;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_password TEXT;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_host TEXT;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_port INTEGER;
+
+CREATE TABLE IF NOT EXISTS password_reset_challenges (
+    id               UUID PRIMARY KEY,
+    user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash        TEXT NOT NULL,
+    reset_token_hash TEXT,
+    attempts         SMALLINT NOT NULL DEFAULT 0,
+    expires_at       TIMESTAMPTZ NOT NULL,
+    verified_at      TIMESTAMPTZ,
+    used_at          TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_user_created
+ON password_reset_challenges(user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS share_links (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

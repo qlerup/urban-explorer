@@ -158,6 +158,41 @@ export async function changeFjordHubPassword(
   return { user: null, error: typeof result.error === 'string' ? result.error : undefined }
 }
 
+export async function requestFjordHubPasswordReset(email: string): Promise<{ challengeId: string }> {
+  const result = await hubRequest('/api/hub/apps/password-reset/request', { email })
+  return { challengeId: typeof result.challenge_id === 'string' ? result.challenge_id : '' }
+}
+
+export async function verifyFjordHubPasswordReset(
+  challengeId: string,
+  code: string
+): Promise<{ resetToken?: string; error?: string }> {
+  const result = await hubRequest('/api/hub/apps/password-reset/verify', {
+    challenge_id: challengeId,
+    code,
+  })
+  if (result.ok === true && typeof result.reset_token === 'string') {
+    return { resetToken: result.reset_token }
+  }
+  return { error: typeof result.error === 'string' ? result.error : 'Koden er ugyldig eller udløbet' }
+}
+
+export async function completeFjordHubPasswordReset(
+  challengeId: string,
+  resetToken: string,
+  password: string
+): Promise<{ ok: boolean; error?: string }> {
+  const result = await hubRequest('/api/hub/apps/password-reset/complete', {
+    challenge_id: challengeId,
+    reset_token: resetToken,
+    password,
+  })
+  return {
+    ok: result.ok === true,
+    error: typeof result.error === 'string' ? result.error : undefined,
+  }
+}
+
 export async function verifyFjordHubSsoToken(token: string): Promise<FjordHubUser | null> {
   const result = await hubRequest('/api/hub/sso-verify', { token }, 'GET')
   if (result.ok !== true || typeof result.username !== 'string' || !result.username.trim()) return null
