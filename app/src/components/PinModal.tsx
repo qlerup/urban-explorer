@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Category, Pin, PinImage, PinRoute, PinStatus } from '@/types/pin'
 import { PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS, PIN_ICON_OPTIONS } from '@/types/pin'
-import { formatDistance } from '@/lib/geo'
+import { formatDistance, wgs84ToUtm32 } from '@/lib/geo'
 import StarRating from './StarRating'
 
 interface Props {
@@ -161,6 +161,10 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const lat = currentPin?.latitude ?? coords?.lat ?? 0
   const lng = currentPin?.longitude ?? coords?.lng ?? 0
   const googleMapsUrl = `https://www.google.com/maps/place/${lat},${lng}/@${lat},${lng},18z/data=!3m1!1e3`
+  const skraafotoCenter = wgs84ToUtm32(lat, lng)
+  const skraafotoUrl = `https://skraafoto.dataforsyningen.dk/?center=${encodeURIComponent(
+    `${skraafotoCenter.easting.toFixed(2)},${skraafotoCenter.northing.toFixed(2)}`
+  )}`
 
   useEffect(() => {
     if (isCreateMode && !allowUncategorized && categoryIds.length === 0 && assignableCategories[0]) {
@@ -441,14 +445,24 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
             <p className="font-mono text-sm text-gray-200">{lat.toFixed(6)}, {lng.toFixed(6)}</p>
           </div>
 
-          <a
-            href={googleMapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-secondary flex items-center justify-center gap-2 text-sm"
-          >
-            🌍 Åbn i Google Maps
-          </a>
+          <div className="space-y-2">
+            <a
+              href={googleMapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary flex items-center justify-center gap-2 text-sm"
+            >
+              🌍 Åbn i Google Maps
+            </a>
+            <a
+              href={skraafotoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary flex items-center justify-center gap-2 text-sm"
+            >
+              📷 Åbn i Skråfoto
+            </a>
+          </div>
 
           {!isCreateMode && currentPin && (currentPin.routes.length > 0 || !readOnly) && (
             <div>
