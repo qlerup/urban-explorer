@@ -131,7 +131,8 @@ const GRID_LAT_STEP_DEG = GRID_CELL_KM / 111.32
 const GRID_LNG_STEP_DEG = GRID_CELL_KM / (111.32 * Math.cos((GRID_REF_LAT_DEG * Math.PI) / 180))
 const GRID_MIN_ZOOM = 12
 const GRID_MAX_CELLS = 4000
-const GRID_DOUBLE_ACTIVATE_MS = 500
+const GRID_MULTI_CLICK_MAX_GAP_MS = 500
+const GRID_ACTIVATION_CLICK_COUNT = 3
 const CADASTRAL_WMS_URL = 'https://api.dataforsyningen.dk/wms/cp_inspire'
 const CADASTRAL_LAYER = 'CP.CadastralParcel'
 const CADASTRAL_MIN_ZOOM = 15
@@ -290,7 +291,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   const locateMarkerRef = useRef<Leaflet.Marker | null>(null)
   const nativeDblClickCleanupRef = useRef<(() => void) | null>(null)
   const lastPointerTypeRef = useRef<string>('mouse')
-  const lastGridClickRef = useRef<{ key: string; time: number } | null>(null)
+  const gridClickSequenceRef = useRef<{ key: string; time: number; count: number } | null>(null)
   const workspaceCanEditRef = useRef(true)
   const measureLayerRef = useRef<Leaflet.LayerGroup | null>(null)
   const viewRouteLayerRef = useRef<Leaflet.LayerGroup | null>(null)
@@ -505,7 +506,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   }
 
   function toggleGridEnabled() {
-    lastGridClickRef.current = null
+    gridClickSequenceRef.current = null
     setGridEnabled(prev => {
       lastGridEnabled = !prev
       return !prev
@@ -582,10 +583,16 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
 
   function shouldToggleGridCellFromClick(key: string) {
     const now = typeof performance === 'undefined' ? Date.now() : performance.now()
-    const lastClick = lastGridClickRef.current
-    const isDoubleActivation = !!lastClick && lastClick.key === key && now - lastClick.time <= GRID_DOUBLE_ACTIVATE_MS
-    lastGridClickRef.current = isDoubleActivation ? null : { key, time: now }
-    return isDoubleActivation
+    const sequence = gridClickSequenceRef.current
+    const continuesSequence =
+      !!sequence
+      && sequence.key === key
+      && now - sequence.time <= GRID_MULTI_CLICK_MAX_GAP_MS
+    const count = continuesSequence ? sequence.count + 1 : 1
+    const shouldActivate = count >= GRID_ACTIVATION_CLICK_COUNT
+
+    gridClickSequenceRef.current = shouldActivate ? null : { key, time: now, count }
+    return shouldActivate
   }
 
   async function toggleGridCell(row: number, col: number) {
