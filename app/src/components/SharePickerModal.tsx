@@ -45,9 +45,15 @@ export default function SharePickerModal({
   const groups = useMemo(() => {
     const map = new Map<string, { category: Category | null; pins: Pin[] }>()
     for (const pin of pins) {
-      const key = pin.category?.id ?? NO_CATEGORY
-      if (!map.has(key)) map.set(key, { category: pin.category, pins: [] })
-      map.get(key)!.pins.push(pin)
+      if (pin.categories.length === 0) {
+        if (!map.has(NO_CATEGORY)) map.set(NO_CATEGORY, { category: null, pins: [] })
+        map.get(NO_CATEGORY)!.pins.push(pin)
+        continue
+      }
+      for (const category of pin.categories) {
+        if (!map.has(category.id)) map.set(category.id, { category, pins: [] })
+        map.get(category.id)!.pins.push(pin)
+      }
     }
     return Array.from(map.values()).sort((a, b) => {
       if (!a.category) return 1

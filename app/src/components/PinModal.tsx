@@ -137,7 +137,9 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const [rating, setRating] = useState(pin?.rating ?? 0)
   const [status, setStatus] = useState<PinStatus>(pin?.status ?? 'vil_se')
   const [icon, setIcon] = useState<string>(pin?.icon ?? PIN_ICON_OPTIONS[0])
-  const [categoryId, setCategoryId] = useState<string>(pin?.category?.id ?? '')
+  const [categoryIds, setCategoryIds] = useState<string[]>(
+    () => pin?.categories?.map(category => category.id) ?? (pin?.category ? [pin.category.id] : [])
+  )
   const [stagedImages, setStagedImages] = useState<StagedImage[]>([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -157,10 +159,18 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const googleMapsUrl = `https://www.google.com/maps/place/${lat},${lng}/@${lat},${lng},18z/data=!3m1!1e3`
 
   useEffect(() => {
-    if (isCreateMode && !allowUncategorized && !categoryId && assignableCategories[0]) {
-      setCategoryId(assignableCategories[0].id)
+    if (isCreateMode && !allowUncategorized && categoryIds.length === 0 && assignableCategories[0]) {
+      setCategoryIds([assignableCategories[0].id])
     }
-  }, [allowUncategorized, assignableCategories, categoryId, isCreateMode])
+  }, [allowUncategorized, assignableCategories, categoryIds.length, isCreateMode])
+
+  function toggleCategory(categoryId: string) {
+    setCategoryIds(prev =>
+      prev.includes(categoryId)
+        ? prev.filter(id => id !== categoryId)
+        : [...prev, categoryId]
+    )
+  }
 
   useEffect(() => {
     return () => {
@@ -224,7 +234,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
       const res = await fetch('/api/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), description: description.trim(), latitude: lat, longitude: lng, rating, status, icon, categoryId: categoryId || null, ownerId: createOwnerId || null }),
+        body: JSON.stringify({ name: name.trim(), description: description.trim(), latitude: lat, longitude: lng, rating, status, icon, categoryIds, ownerId: createOwnerId || null }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -256,7 +266,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
     rating !== currentPin.rating ||
     status !== currentPin.status ||
     icon !== currentPin.icon ||
-    categoryId !== (currentPin.category?.id ?? '')
+    categoryIds.join(',') !== currentPin.categories.map(category => category.id).join(',')
   )
 
   async function handleUpdate() {
@@ -272,14 +282,23 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
       const res = await fetch(`/api/pins/${currentPin.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed, description: description.trim(), rating, status, icon, categoryId: categoryId || null }),
+        body: JSON.stringify({ name: trimmed, description: description.trim(), rating, status, icon, categoryIds }),
       })
       const data = await res.json()
       if (!res.ok) {
         setError(data.error || 'Kunne ikke gemme ændringer')
         return
       }
-      const updated = { ...currentPin, name: data.name, description: data.description, rating: data.rating, status: data.status, icon: data.icon, category: data.category }
+      const updated = {
+        ...currentPin,
+        name: data.name,
+        description: data.description,
+        rating: data.rating,
+        status: data.status,
+        icon: data.icon,
+        categories: data.categories,
+        category: data.category,
+      }
       setCurrentPin(updated)
       setName(updated.name)
       setDescription(updated.description)
@@ -535,36 +554,47 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
             )}
           </div>
 
-          {currentPin?.category && readOnly ? (
+          {currentPin && currentPin.categories.length > 0 && readOnly ? (
             <div>
-              <p className="text-xs text-gray-500 mb-2">Kategori</p>
-              <span
-                className="text-xs font-medium px-3 py-1.5 rounded-full text-white inline-flex items-center gap-1.5"
-                style={{ backgroundColor: currentPin.category.color }}
-              >
-                {currentPin.category.name}
-              </span>
+              <p className="text-xs text-gray-500 mb-2">Kategorier</p>
+              <div className="flex flex-wrap gap-1.5">
+                {currentPin.categories.map(category => (
+                  <span
+                    key={category.id}
+                    className="text-xs font-medium px-3 py-1.5 rounded-full text-white inline-flex items-center gap-1.5"
+                    style={{ backgroundColor: category.color }}
+                  >
+                    {category.name}
+                  </span>
+                ))}
+              </div>
             </div>
           ) : (
             !readOnly && assignableCategories.length > 0 && (
               <div>
-                <label htmlFor="pin-category-select" className="text-xs text-gray-500 mb-2 block">Kategori</label>
-                <select
-                  id="pin-category-select"
-                  value={categoryId}
-                  onChange={e => setCategoryId(e.target.value)}
-                  className="input"
-                  disabled={!isOwnPin}
-                >
-                  {allowUncategorized && <option value="">Ingen kategori</option>}
+                <p className="text-xs text-gray-500 mb-2">Kategorier</p>
+                <div className="space-y-2 rounded-xl border border-void-700 bg-void-950/40 p-3">
                   {assignableCategories.map(cat => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}{cat.sharedBy ? ` · delt af ${cat.sharedBy}` : ''}
-                    </option>
+                    <label key={cat.id} className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={categoryIds.includes(cat.id)}
+                        onChange={() => toggleCategory(cat.id)}
+                        className="w-4 h-4 accent-rust-600"
+                        disabled={!isOwnPin || (!allowUncategorized && categoryIds.length === 1 && categoryIds[0] === cat.id)}
+                      />
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                      <span className="text-sm text-gray-300">
+                        {cat.name}{cat.sharedBy ? ` · delt af ${cat.sharedBy}` : ''}
+                      </span>
+                    </label>
                   ))}
-                </select>
+                </div>
+                {allowUncategorized && categoryIds.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">Pinnen gemmes uden kategori.</p>
+                )}
                 {!isOwnPin && (
-                  <p className="text-xs text-gray-500 mt-1">Kun ejeren kan flytte pinnen til en anden kategori.</p>
+                  <p className="text-xs text-gray-500 mt-1">Kun ejeren kan ændre pinnens kategorier.</p>
                 )}
               </div>
             )

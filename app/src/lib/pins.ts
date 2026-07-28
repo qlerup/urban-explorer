@@ -13,6 +13,19 @@ const ROUTES_SUBQUERY = `(
   FROM pin_routes pr WHERE pr.pin_id = p.id
 ) AS routes`
 
+const CATEGORIES_SUBQUERY = `(
+  SELECT COALESCE(
+    json_agg(
+      json_build_object('id', c.id, 'name', c.name, 'color', c.color)
+      ORDER BY pc.position, c.name
+    ),
+    '[]'
+  )
+  FROM pin_categories pc
+  JOIN categories c ON c.id = pc.category_id
+  WHERE pc.pin_id = p.id
+) AS categories`
+
 interface PinRow {
   id: string
   name: string
@@ -26,6 +39,7 @@ interface PinRow {
   category_id: string | null
   category_name: string | null
   category_color: string | null
+  categories?: { id: string; name: string; color: string }[]
   images: { id: string; originalName: string; mimeType: string }[]
   routes?: PinRoute[]
   can_edit?: boolean
@@ -34,6 +48,11 @@ interface PinRow {
 }
 
 function mapRow(row: PinRow): Pin {
+  const categories = row.categories ?? (
+    row.category_id
+      ? [{ id: row.category_id, name: row.category_name ?? '', color: row.category_color ?? '#e08a3c' }]
+      : []
+  )
   const pin: Pin = {
     id: row.id,
     name: row.name,
@@ -43,13 +62,8 @@ function mapRow(row: PinRow): Pin {
     rating: row.rating,
     status: row.status,
     icon: row.icon || '📍',
-    category: row.category_id
-      ? {
-          id: row.category_id,
-          name: row.category_name ?? '',
-          color: row.category_color ?? '#e08a3c',
-        }
-      : null,
+    categories,
+    category: categories[0] ?? null,
     createdAt: row.created_at,
     images: row.images.map(img => ({
       id: img.id,
@@ -73,8 +87,16 @@ export async function getPinsForUser(userId: string): Promise<Pin[]> {
   // ukategoriserede pins fra ejere der har delt dem med brugeren.
   const result = await pool.query<PinRow>(
     `SELECT p.id, p.name, p.description, p.latitude, p.longitude, p.rating, p.status, p.icon, p.created_at,
-            c.id AS category_id, c.name AS category_name, c.color AS category_color,
-            (p.user_id = $1 OR COALESCE(c.user_id = $1, FALSE) OR COALESCE(cs.can_edit, FALSE) OR COALESCE(ups.can_edit, FALSE)) AS can_edit,
+            p.category_id, NULL::text AS category_name, NULL::text AS category_color,
+            ${CATEGORIES_SUBQUERY},
+            (p.user_id = $1
+              OR EXISTS (
+                SELECT 1 FROM pin_categories epc
+                JOIN categories ec ON ec.id = epc.category_id
+                LEFT JOIN category_shares ecs ON ecs.category_id = ec.id AND ecs.shared_with_id = $1
+                WHERE epc.pin_id = p.id AND (ec.user_id = $1 OR COALESCE(ecs.can_edit, FALSE))
+              )
+              OR COALESCE(ups.can_edit, FALSE)) AS can_edit,
             p.user_id AS owner_id,
             CASE WHEN p.user_id = $1 THEN NULL ELSE u.first_name END AS owner_first_name,
             COALESCE(
@@ -86,12 +108,18 @@ export async function getPinsForUser(userId: string): Promise<Pin[]> {
      FROM pins p
      JOIN users u ON u.id = p.user_id
      LEFT JOIN pin_images i ON i.pin_id = p.id
-     LEFT JOIN categories c ON c.id = p.category_id
-     LEFT JOIN category_shares cs ON cs.category_id = p.category_id AND cs.shared_with_id = $1
      LEFT JOIN uncategorized_pin_shares ups
-       ON ups.owner_id = p.user_id AND ups.shared_with_id = $1 AND p.category_id IS NULL
-     WHERE p.user_id = $1 OR c.user_id = $1 OR cs.category_id IS NOT NULL OR ups.id IS NOT NULL
-     GROUP BY p.id, c.id, c.name, c.color, cs.can_edit, ups.can_edit, u.first_name
+       ON ups.owner_id = p.user_id AND ups.shared_with_id = $1
+       AND NOT EXISTS (SELECT 1 FROM pin_categories npc WHERE npc.pin_id = p.id)
+     WHERE p.user_id = $1
+       OR EXISTS (
+         SELECT 1 FROM pin_categories vpc
+         JOIN categories vc ON vc.id = vpc.category_id
+         LEFT JOIN category_shares vcs ON vcs.category_id = vc.id AND vcs.shared_with_id = $1
+         WHERE vpc.pin_id = p.id AND (vc.user_id = $1 OR vcs.category_id IS NOT NULL)
+       )
+       OR ups.id IS NOT NULL
+     GROUP BY p.id, ups.can_edit, u.first_name
      ORDER BY p.created_at DESC`,
     [userId]
   )
@@ -102,7 +130,8 @@ export async function getPinsByIds(userId: string, pinIds: string[]): Promise<Pi
   if (pinIds.length === 0) return []
   const result = await pool.query<PinRow>(
     `SELECT p.id, p.name, p.description, p.latitude, p.longitude, p.rating, p.status, p.icon, p.created_at,
-            c.id AS category_id, c.name AS category_name, c.color AS category_color,
+            p.category_id, NULL::text AS category_name, NULL::text AS category_color,
+            ${CATEGORIES_SUBQUERY},
             COALESCE(
               json_agg(json_build_object('id', i.id, 'originalName', i.original_name, 'mimeType', i.mime_type) ORDER BY i.created_at)
               FILTER (WHERE i.id IS NOT NULL),
@@ -111,9 +140,8 @@ export async function getPinsByIds(userId: string, pinIds: string[]): Promise<Pi
             ${ROUTES_SUBQUERY}
      FROM pins p
      LEFT JOIN pin_images i ON i.pin_id = p.id
-     LEFT JOIN categories c ON c.id = p.category_id
      WHERE p.user_id = $1 AND p.id = ANY($2::uuid[])
-     GROUP BY p.id, c.id, c.name, c.color
+     GROUP BY p.id
      ORDER BY p.created_at DESC`,
     [userId, pinIds]
   )
@@ -148,7 +176,20 @@ export interface PinExportRow {
 export async function getPinsForExport(userId: string): Promise<PinExportRow[]> {
   const result = await pool.query(
     `SELECT p.id, p.name, p.description, p.latitude, p.longitude, p.rating, p.status, p.icon, p.created_at,
-            c.name AS category_name, c.color AS category_color,
+            (
+              SELECT string_agg(c.name, ', ' ORDER BY pc.position, c.name)
+              FROM pin_categories pc
+              JOIN categories c ON c.id = pc.category_id
+              WHERE pc.pin_id = p.id
+            ) AS category_name,
+            (
+              SELECT c.color
+              FROM pin_categories pc
+              JOIN categories c ON c.id = pc.category_id
+              WHERE pc.pin_id = p.id
+              ORDER BY pc.position, c.name
+              LIMIT 1
+            ) AS category_color,
             COALESCE(
               json_agg(json_build_object('filename', i.filename, 'mimeType', i.mime_type) ORDER BY i.created_at)
               FILTER (WHERE i.id IS NOT NULL),
@@ -157,9 +198,8 @@ export async function getPinsForExport(userId: string): Promise<PinExportRow[]> 
             ${ROUTES_SUBQUERY}
      FROM pins p
      LEFT JOIN pin_images i ON i.pin_id = p.id
-     LEFT JOIN categories c ON c.id = p.category_id
      WHERE p.user_id = $1
-     GROUP BY p.id, c.name, c.color
+     GROUP BY p.id
      ORDER BY p.created_at DESC`,
     [userId]
   )

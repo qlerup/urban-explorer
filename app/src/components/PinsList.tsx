@@ -18,8 +18,7 @@ function sharedUncatKey(ownerId: string): string {
   return `__shared_none__:${ownerId}`
 }
 
-function pinCategoryKey(pin: Pin): string {
-  if (pin.category) return pin.category.id
+function uncategorizedKey(pin: Pin): string {
   return pin.ownerId ? sharedUncatKey(pin.ownerId) : NO_CATEGORY
 }
 
@@ -57,7 +56,7 @@ export default function PinsList({
     () => new Set([
       ...categories.map(c => c.id),
       NO_CATEGORY,
-      ...initialPins.filter(p => p.ownerId && !p.category).map(p => sharedUncatKey(p.ownerId!)),
+      ...initialPins.filter(p => p.ownerId && p.categories.length === 0).map(p => sharedUncatKey(p.ownerId!)),
     ])
   )
   const ownCategories = categories.filter(c => !c.sharedBy)
@@ -65,7 +64,7 @@ export default function PinsList({
   const sharedUncatOwners = useMemo(() => {
     const owners = new Map<string, string>()
     for (const pin of pins) {
-      if (pin.ownerId && pin.ownerName && !pin.category) owners.set(pin.ownerId, pin.ownerName)
+      if (pin.ownerId && pin.ownerName && pin.categories.length === 0) owners.set(pin.ownerId, pin.ownerName)
     }
     return Array.from(owners, ([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name, 'da'))
@@ -137,8 +136,10 @@ export default function PinsList({
   const filteredPins = useMemo(
     () =>
       pins.filter(pin => {
-        const catKey = pinCategoryKey(pin)
-        return activeCategoryIds.has(catKey) && activeStatuses.has(pin.status) && activeRatings.has(pin.rating)
+        const categoryMatches = pin.categories.length > 0
+          ? pin.categories.some(category => activeCategoryIds.has(category.id))
+          : activeCategoryIds.has(uncategorizedKey(pin))
+        return categoryMatches && activeStatuses.has(pin.status) && activeRatings.has(pin.rating)
       }),
     [pins, activeCategoryIds, activeStatuses, activeRatings]
   )
@@ -146,9 +147,17 @@ export default function PinsList({
   const groups = useMemo(() => {
     const map = new Map<string, { id: string; category: Category | null; ownerName?: string; pins: Pin[] }>()
     for (const pin of filteredPins) {
-      const key = pinCategoryKey(pin)
-      if (!map.has(key)) map.set(key, { id: key, category: pin.category, ownerName: pin.ownerName, pins: [] })
-      map.get(key)!.pins.push(pin)
+      const activeCategories = pin.categories.filter(category => activeCategoryIds.has(category.id))
+      if (activeCategories.length === 0) {
+        const key = uncategorizedKey(pin)
+        if (!map.has(key)) map.set(key, { id: key, category: null, ownerName: pin.ownerName, pins: [] })
+        map.get(key)!.pins.push(pin)
+        continue
+      }
+      for (const category of activeCategories) {
+        if (!map.has(category.id)) map.set(category.id, { id: category.id, category, ownerName: pin.ownerName, pins: [] })
+        map.get(category.id)!.pins.push(pin)
+      }
     }
     return Array.from(map.values()).sort((a, b) => {
       if (!a.category && !b.category) return (a.ownerName ?? '').localeCompare(b.ownerName ?? '', 'da')
@@ -156,7 +165,7 @@ export default function PinsList({
       if (!b.category) return -1
       return a.category.name.localeCompare(b.category.name, 'da')
     })
-  }, [filteredPins])
+  }, [filteredPins, activeCategoryIds])
 
   if (pins.length === 0) {
     return (

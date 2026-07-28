@@ -6,7 +6,7 @@ export interface PinAccess {
   /** Brugeren må redigere pinnen (ejer, kategoriejer eller delt med redigeringsret) */
   canEdit: boolean
   /** Pinnens nuværende kategori */
-  categoryId: string | null
+  categoryIds: string[]
 }
 
 /**
@@ -19,18 +19,32 @@ export interface PinAccess {
 export async function getPinAccess(pinId: string, userId: string): Promise<PinAccess | null> {
   const result = await pool.query(
     `SELECT p.user_id = $2 AS is_owner,
-            p.category_id,
-            c.user_id = $2 AS is_category_owner,
-            cs.can_edit AS share_can_edit,
-            cs.category_id IS NOT NULL AS is_shared,
+            COALESCE((
+              SELECT array_agg(pc.category_id ORDER BY pc.position)
+              FROM pin_categories pc
+              WHERE pc.pin_id = p.id
+            ), ARRAY[]::uuid[]) AS category_ids,
+            EXISTS (
+              SELECT 1 FROM pin_categories pc
+              JOIN categories c ON c.id = pc.category_id
+              WHERE pc.pin_id = p.id AND c.user_id = $2
+            ) AS is_category_owner,
+            EXISTS (
+              SELECT 1 FROM pin_categories pc
+              JOIN category_shares cs ON cs.category_id = pc.category_id
+              WHERE pc.pin_id = p.id AND cs.shared_with_id = $2 AND cs.can_edit
+            ) AS share_can_edit,
+            EXISTS (
+              SELECT 1 FROM pin_categories pc
+              JOIN category_shares cs ON cs.category_id = pc.category_id
+              WHERE pc.pin_id = p.id AND cs.shared_with_id = $2
+            ) AS is_shared,
             ups.can_edit AS uncat_share_can_edit,
             ups.id IS NOT NULL AS is_uncat_shared
      FROM pins p
-     LEFT JOIN categories c ON c.id = p.category_id
-     LEFT JOIN category_shares cs
-       ON cs.category_id = p.category_id AND cs.shared_with_id = $2
      LEFT JOIN uncategorized_pin_shares ups
-       ON ups.owner_id = p.user_id AND ups.shared_with_id = $2 AND p.category_id IS NULL
+       ON ups.owner_id = p.user_id AND ups.shared_with_id = $2
+       AND NOT EXISTS (SELECT 1 FROM pin_categories pc WHERE pc.pin_id = p.id)
      WHERE p.id = $1`,
     [pinId, userId]
   )
@@ -45,6 +59,6 @@ export async function getPinAccess(pinId: string, userId: string): Promise<PinAc
   return {
     isOwner,
     canEdit: isOwner || isCategoryOwner || row.share_can_edit === true || row.uncat_share_can_edit === true,
-    categoryId: row.category_id ?? null,
+    categoryIds: row.category_ids ?? [],
   }
 }

@@ -15,7 +15,7 @@ export default async function SharePinsPage({ params }: { params: Promise<{ toke
   const [pins, maptilerKey] = await Promise.all([getPinsByIds(scope.userId, scope.pinIds), getMaptilerKey()])
 
   const categories: Category[] = Array.from(
-    new Map(pins.flatMap(p => (p.category ? [[p.category.id, p.category] as const] : []))).values()
+    new Map(pins.flatMap(pin => pin.categories.map(category => [category.id, category] as const))).values()
   )
 
   const sharedPins = pins.map(p => ({

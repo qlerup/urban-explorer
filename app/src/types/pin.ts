@@ -70,6 +70,8 @@ export interface Pin {
   rating: number
   status: PinStatus
   icon: string
+  categories: Category[]
+  /** Første kategori, bevaret for visninger der bruger én primær farve. */
   category: Category | null
   createdAt: string
   images: PinImage[]

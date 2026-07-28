@@ -24,7 +24,10 @@ export async function POST(req: NextRequest) {
   const rating = body.rating != null ? Number(body.rating) : 0
   const status = isPinStatus(body.status) ? body.status : 'vil_se'
   const icon = typeof body.icon === 'string' && PIN_ICON_OPTIONS.includes(body.icon) ? body.icon : '📍'
-  const categoryId = typeof body.categoryId === 'string' && body.categoryId ? body.categoryId : null
+  const rawCategoryIds = Array.isArray(body.categoryIds)
+    ? body.categoryIds
+    : (typeof body.categoryId === 'string' && body.categoryId ? [body.categoryId] : [])
+  const categoryIds = Array.from(new Set(rawCategoryIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)))
   const ownerId = typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : session.userId
 
   if (!name || name.length > 200) {
@@ -41,20 +44,23 @@ export async function POST(req: NextRequest) {
   }
 
   if (ownerId === session.userId) {
-    if (categoryId) {
-      const ownCategory = await pool.query('SELECT 1 FROM categories WHERE id = $1 AND user_id = $2', [categoryId, session.userId])
-      if ((ownCategory.rowCount ?? 0) === 0) {
+    if (categoryIds.length > 0) {
+      const ownCategories = await pool.query(
+        'SELECT id FROM categories WHERE id = ANY($1::uuid[]) AND user_id = $2',
+        [categoryIds, session.userId]
+      )
+      if ((ownCategories.rowCount ?? 0) !== categoryIds.length) {
         return NextResponse.json({ error: 'Ugyldig kategori' }, { status: 400 })
       }
     }
-  } else if (categoryId) {
+  } else if (categoryIds.length > 0) {
     const access = await pool.query(
-      `SELECT 1 FROM categories c
+      `SELECT c.id FROM categories c
        JOIN category_shares cs ON cs.category_id = c.id
-       WHERE c.id = $1 AND c.user_id = $2 AND cs.shared_with_id = $3 AND cs.can_edit`,
-      [categoryId, ownerId, session.userId]
+       WHERE c.id = ANY($1::uuid[]) AND c.user_id = $2 AND cs.shared_with_id = $3 AND cs.can_edit`,
+      [categoryIds, ownerId, session.userId]
     )
-    if ((access.rowCount ?? 0) === 0) {
+    if ((access.rowCount ?? 0) !== categoryIds.length) {
       return NextResponse.json({ error: 'Du kan ikke oprette pins i denne kategori' }, { status: 403 })
     }
   } else {
@@ -68,17 +74,40 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const result = await pool.query(
-    `INSERT INTO pins (user_id, name, description, latitude, longitude, location, rating, status, icon, category_id)
-     VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326)::geography, $6, $7, $8, $9)
-     RETURNING id, name, description, latitude, longitude, rating, status, icon, category_id, created_at`,
-    [ownerId, name, description, latitude, longitude, rating, status, icon, categoryId]
-  )
+  const client = await pool.connect()
+  let row
+  try {
+    await client.query('BEGIN')
+    const result = await client.query(
+      `INSERT INTO pins (user_id, name, description, latitude, longitude, location, rating, status, icon, category_id)
+       VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($5, $4), 4326)::geography, $6, $7, $8, $9)
+       RETURNING id, name, description, latitude, longitude, rating, status, icon, category_id, created_at`,
+      [ownerId, name, description, latitude, longitude, rating, status, icon, categoryIds[0] ?? null]
+    )
+    row = result.rows[0]
+    for (let position = 0; position < categoryIds.length; position += 1) {
+      await client.query(
+        'INSERT INTO pin_categories (pin_id, category_id, position) VALUES ($1, $2, $3)',
+        [row.id, categoryIds[position], position]
+      )
+    }
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
 
-  const row = result.rows[0]
-  const category = categoryId
-    ? (await pool.query('SELECT id, name, color FROM categories WHERE id = $1', [categoryId])).rows[0]
-    : null
+  const selectedCategories = categoryIds.length > 0
+    ? (await pool.query(
+        `SELECT id, name, color
+         FROM categories
+         WHERE id = ANY($1::uuid[])
+         ORDER BY array_position($1::uuid[], id)`,
+        [categoryIds]
+      )).rows
+    : []
   const owner = ownerId !== session.userId
     ? (await pool.query('SELECT first_name FROM users WHERE id = $1', [ownerId])).rows[0]
     : null
@@ -86,9 +115,10 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     pin: mapPinRow({
       ...row,
-      category_id: category?.id ?? null,
-      category_name: category?.name ?? null,
-      category_color: category?.color ?? null,
+      categories: selectedCategories,
+      category_id: selectedCategories[0]?.id ?? null,
+      category_name: selectedCategories[0]?.name ?? null,
+      category_color: selectedCategories[0]?.color ?? null,
       owner_id: ownerId !== session.userId ? ownerId : null,
       owner_first_name: owner?.first_name ?? null,
       can_edit: true,

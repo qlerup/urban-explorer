@@ -68,9 +68,11 @@ function sharedUncatKey(ownerId: string): string {
   return `__shared_none__:${ownerId}`
 }
 
-function pinCategoryKey(pin: Pin): string {
-  if (pin.category) return pin.category.id
-  return pin.ownerId ? sharedUncatKey(pin.ownerId) : NO_CATEGORY
+function pinMatchesActiveCategories(pin: Pin, activeCategoryIds: Set<string>): boolean {
+  if (pin.categories.length > 0) {
+    return pin.categories.some(category => activeCategoryIds.has(category.id))
+  }
+  return activeCategoryIds.has(pin.ownerId ? sharedUncatKey(pin.ownerId) : NO_CATEGORY)
 }
 type MapLayerId = 'satellite-v4' | 'hybrid-v4' | 'outdoor-v4'
 interface MapLayerPreviewTile {
@@ -691,8 +693,9 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     () => {
       if (!pinsVisible) return []
       return workspacePins.filter(pin => {
-        const catKey = pinCategoryKey(pin)
-        return activeCategoryIds.has(catKey) && activeStatuses.has(pin.status) && activeRatings.has(pin.rating)
+        return pinMatchesActiveCategories(pin, activeCategoryIds)
+          && activeStatuses.has(pin.status)
+          && activeRatings.has(pin.rating)
       })
     },
     [workspacePins, pinsVisible, activeCategoryIds, activeStatuses, activeRatings]
