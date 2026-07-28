@@ -146,6 +146,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [deletingRouteId, setDeletingRouteId] = useState<string | null>(null)
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const stagedFileInputRef = useRef<HTMLInputElement>(null)
@@ -154,6 +155,9 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   // Egne kategorier + kategorier delt med redigeringsret kan tildeles pins
   const assignableCategories = categories.filter(c => !c.sharedBy || c.canEdit)
   const isOwnPin = !currentPin?.ownerName
+  const selectedCategoryNames = assignableCategories
+    .filter(category => categoryIds.includes(category.id))
+    .map(category => category.name)
   const lat = currentPin?.latitude ?? coords?.lat ?? 0
   const lng = currentPin?.longitude ?? coords?.lng ?? 0
   const googleMapsUrl = `https://www.google.com/maps/place/${lat},${lng}/@${lat},${lng},18z/data=!3m1!1e3`
@@ -573,7 +577,23 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
             !readOnly && assignableCategories.length > 0 && (
               <div>
                 <p className="text-xs text-gray-500 mb-2">Kategorier</p>
-                <div className="space-y-2 rounded-xl border border-void-700 bg-void-950/40 p-3">
+                <button
+                  type="button"
+                  onClick={() => setCategoryPickerOpen(true)}
+                  disabled={!isOwnPin}
+                  className="md:hidden w-full min-h-12 rounded-xl border border-void-600 bg-void-800 px-4 py-3 text-left flex items-center gap-3 disabled:opacity-60"
+                >
+                  <span className="min-w-0 flex-1 text-sm text-gray-200 truncate">
+                    {selectedCategoryNames.length > 0 ? selectedCategoryNames.join(', ') : 'Ingen kategori'}
+                  </span>
+                  {selectedCategoryNames.length > 0 && (
+                    <span className="shrink-0 rounded-full bg-rust-600 px-2 py-0.5 text-xs font-semibold text-white">
+                      {selectedCategoryNames.length}
+                    </span>
+                  )}
+                  <span className="shrink-0 text-lg leading-none text-gray-500">›</span>
+                </button>
+                <div className="hidden md:block space-y-2 rounded-xl border border-void-700 bg-void-950/40 p-3">
                   {assignableCategories.map(cat => (
                     <label key={cat.id} className="flex items-center gap-2.5 cursor-pointer">
                       <input
@@ -736,6 +756,74 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
           </div>
         </div>
       </div>
+
+      {categoryPickerOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-[2100] flex items-end bg-black/55 backdrop-blur-[2px]"
+          onClick={event => {
+            event.stopPropagation()
+            setCategoryPickerOpen(false)
+          }}
+        >
+          <div
+            className="w-full rounded-t-[1.75rem] border border-b-0 border-void-600 bg-void-900 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-gray-600" />
+            <div className="mb-3 flex items-center justify-between px-1">
+              <div>
+                <h3 className="text-base font-semibold text-gray-100">Vælg kategorier</h3>
+                <p className="text-xs text-gray-500">Du kan vælge flere</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCategoryPickerOpen(false)}
+                className="rounded-full bg-rust-600 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Færdig
+              </button>
+            </div>
+            <div className="max-h-[55vh] overflow-y-auto rounded-2xl border border-void-700 bg-void-950/50">
+              {assignableCategories.map((category, index) => {
+                const selected = categoryIds.includes(category.id)
+                const cannotDeselect = !allowUncategorized && categoryIds.length === 1 && selected
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => {
+                      if (!cannotDeselect) toggleCategory(category.id)
+                    }}
+                    disabled={cannotDeselect}
+                    className={`flex min-h-14 w-full items-center gap-3 px-4 text-left active:bg-void-700/70 disabled:opacity-60 ${
+                      index > 0 ? 'border-t border-void-700' : ''
+                    }`}
+                  >
+                    <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: category.color }} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] text-gray-100">{category.name}</span>
+                      {category.sharedBy && (
+                        <span className="block truncate text-xs text-gray-500">Delt af {category.sharedBy}</span>
+                      )}
+                    </span>
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                        selected ? 'bg-rust-600 text-white' : 'border border-gray-600 text-transparent'
+                      }`}
+                      aria-hidden="true"
+                    >
+                      ✓
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            {allowUncategorized && categoryIds.length === 0 && (
+              <p className="px-1 pt-3 text-center text-xs text-gray-500">Pinnen gemmes uden kategori.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
