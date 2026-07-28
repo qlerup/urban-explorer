@@ -1156,13 +1156,13 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
       return L!.divIcon({
         html: `
           <div style="display:flex;flex-direction:column;align-items:center;">
-            <div style="box-sizing:border-box;width:38px;height:38px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;font-size:19px;border:3px solid black;box-shadow:0 2px 4px rgba(0,0,0,0.5)">${glyph}</div>
-            <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:9px solid black;margin-top:-2px"></div>
+            <div style="box-sizing:border-box;width:57px;height:57px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;font-size:29px;border:4px solid black;box-shadow:0 3px 6px rgba(0,0,0,0.5)">${glyph}</div>
+            <div style="width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-top:14px solid black;margin-top:-3px"></div>
           </div>
         `,
         className: '',
-        iconSize: [38, 45],
-        iconAnchor: [19, 45],
+        iconSize: [57, 68],
+        iconAnchor: [28.5, 68],
       })
     }
 
