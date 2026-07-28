@@ -96,6 +96,7 @@ export async function getPinsForUser(userId: string): Promise<Pin[]> {
                 LEFT JOIN category_shares ecs ON ecs.category_id = ec.id AND ecs.shared_with_id = $1
                 WHERE epc.pin_id = p.id AND (ec.user_id = $1 OR COALESCE(ecs.can_edit, FALSE))
               )
+              OR COALESCE(ps.can_edit, FALSE)
               OR COALESCE(ups.can_edit, FALSE)) AS can_edit,
             p.user_id AS owner_id,
             CASE WHEN p.user_id = $1 THEN NULL ELSE u.first_name END AS owner_first_name,
@@ -108,6 +109,7 @@ export async function getPinsForUser(userId: string): Promise<Pin[]> {
      FROM pins p
      JOIN users u ON u.id = p.user_id
      LEFT JOIN pin_images i ON i.pin_id = p.id
+     LEFT JOIN pin_shares ps ON ps.pin_id = p.id AND ps.shared_with_id = $1
      LEFT JOIN uncategorized_pin_shares ups
        ON ups.owner_id = p.user_id AND ups.shared_with_id = $1
        AND NOT EXISTS (SELECT 1 FROM pin_categories npc WHERE npc.pin_id = p.id)
@@ -118,8 +120,9 @@ export async function getPinsForUser(userId: string): Promise<Pin[]> {
          LEFT JOIN category_shares vcs ON vcs.category_id = vc.id AND vcs.shared_with_id = $1
          WHERE vpc.pin_id = p.id AND (vc.user_id = $1 OR vcs.category_id IS NOT NULL)
        )
+       OR ps.id IS NOT NULL
        OR ups.id IS NOT NULL
-     GROUP BY p.id, ups.can_edit, u.first_name
+     GROUP BY p.id, ps.can_edit, ups.can_edit, u.first_name
      ORDER BY p.created_at DESC`,
     [userId]
   )

@@ -27,6 +27,16 @@ interface StagedImage {
   previewUrl: string
 }
 
+interface ShareUserOption {
+  id: string
+  firstName: string
+}
+
+interface DirectPinShare {
+  userId: string
+  canEdit: boolean
+}
+
 const VIDEO_EXTENSIONS = ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', '3gp']
 const MEDIA_EXTENSIONS = ['jpg', 'jpeg', 'png', ...VIDEO_EXTENSIONS]
 const IMAGE_ACCEPT = '.jpg,.jpeg,.png,.mp4,.m4v,.mov,.webm,.mkv,.avi,.3gp,image/jpeg,image/png,video/mp4,video/quicktime,video/webm'
@@ -147,9 +157,13 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const [deleting, setDeleting] = useState(false)
   const [deletingRouteId, setDeletingRouteId] = useState<string | null>(null)
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
+  const [shareUsers, setShareUsers] = useState<ShareUserOption[]>([])
+  const [directShares, setDirectShares] = useState<DirectPinShare[]>([])
+  const [sharingLoading, setSharingLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const stagedFileInputRef = useRef<HTMLInputElement>(null)
+  const initialDirectSharesRef = useRef('[]')
 
   const isCreateMode = !currentPin
   // Egne kategorier + kategorier delt med redigeringsret kan tildeles pins
@@ -165,6 +179,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const skraafotoUrl = `https://skraafoto.dataforsyningen.dk/?center=${encodeURIComponent(
     `${skraafotoCenter.easting.toFixed(2)},${skraafotoCenter.northing.toFixed(2)}`
   )}`
+  const canManageDirectShares = !readOnly && isOwnPin && !createOwnerId
 
   useEffect(() => {
     if (isCreateMode && !allowUncategorized && categoryIds.length === 0 && assignableCategories[0]) {
@@ -178,6 +193,42 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
         ? prev.filter(id => id !== categoryId)
         : [...prev, categoryId]
     )
+  }
+
+  useEffect(() => {
+    if (!canManageDirectShares) return
+    let cancelled = false
+    setSharingLoading(true)
+    const query = currentPin ? `?pinId=${encodeURIComponent(currentPin.id)}` : ''
+    void fetch(`/api/pin-shares${query}`)
+      .then(async response => {
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || 'Kunne ikke hente brugere')
+        if (cancelled) return
+        const shares = Array.isArray(data.shares) ? data.shares as DirectPinShare[] : []
+        setShareUsers(Array.isArray(data.users) ? data.users : [])
+        setDirectShares(shares)
+        initialDirectSharesRef.current = JSON.stringify(shares)
+      })
+      .catch(fetchError => {
+        if (!cancelled) setError(fetchError instanceof Error ? fetchError.message : 'Kunne ikke hente brugere')
+      })
+      .finally(() => {
+        if (!cancelled) setSharingLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [canManageDirectShares, currentPin])
+
+  function toggleDirectShare(userId: string) {
+    setDirectShares(prev =>
+      prev.some(share => share.userId === userId)
+        ? prev.filter(share => share.userId !== userId)
+        : [...prev, { userId, canEdit: false }]
+    )
+  }
+
+  function setDirectSharePermission(userId: string, canEdit: boolean) {
+    setDirectShares(prev => prev.map(share => share.userId === userId ? { ...share, canEdit } : share))
   }
 
   useEffect(() => {
@@ -242,7 +293,18 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
       const res = await fetch('/api/pins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), description: description.trim(), latitude: lat, longitude: lng, rating, status, icon, categoryIds, ownerId: createOwnerId || null }),
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim(),
+          latitude: lat,
+          longitude: lng,
+          rating,
+          status,
+          icon,
+          categoryIds,
+          ownerId: createOwnerId || null,
+          directShares: canManageDirectShares ? directShares : [],
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -274,7 +336,8 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
     rating !== currentPin.rating ||
     status !== currentPin.status ||
     icon !== currentPin.icon ||
-    categoryIds.join(',') !== currentPin.categories.map(category => category.id).join(',')
+    categoryIds.join(',') !== currentPin.categories.map(category => category.id).join(',') ||
+    (canManageDirectShares && JSON.stringify(directShares) !== initialDirectSharesRef.current)
   )
 
   async function handleUpdate() {
@@ -296,6 +359,19 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
       if (!res.ok) {
         setError(data.error || 'Kunne ikke gemme ændringer')
         return
+      }
+      if (canManageDirectShares && JSON.stringify(directShares) !== initialDirectSharesRef.current) {
+        const shareRes = await fetch('/api/pin-shares', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pinId: currentPin.id, shares: directShares }),
+        })
+        const shareData = await shareRes.json()
+        if (!shareRes.ok) {
+          setError(shareData.error || 'Pinnen blev gemt, men delingen kunne ikke opdateres')
+          return
+        }
+        initialDirectSharesRef.current = JSON.stringify(directShares)
       }
       const updated = {
         ...currentPin,
@@ -572,7 +648,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
             )}
           </div>
 
-          {currentPin && currentPin.categories.length > 0 && readOnly ? (
+          {currentPin && currentPin.categories.length > 0 && (readOnly || !isOwnPin) ? (
             <div>
               <p className="text-xs text-gray-500 mb-2">Kategorier</p>
               <div className="flex flex-wrap gap-1.5">
@@ -632,6 +708,63 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
                 )}
               </div>
             )
+          )}
+
+          {canManageDirectShares && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Del pin med bruger</p>
+              <div className="rounded-xl border border-void-700 bg-void-950/40 overflow-hidden">
+                {sharingLoading ? (
+                  <p className="px-3 py-4 text-center text-xs text-gray-500">Henter brugere...</p>
+                ) : shareUsers.length === 0 ? (
+                  <p className="px-3 py-4 text-center text-xs text-gray-500">Ingen andre brugere at dele med.</p>
+                ) : (
+                  shareUsers.map((user, index) => {
+                    const share = directShares.find(candidate => candidate.userId === user.id)
+                    return (
+                      <div key={user.id} className={`px-3 py-2.5 ${index > 0 ? 'border-t border-void-700' : ''}`}>
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!share}
+                            onChange={() => toggleDirectShare(user.id)}
+                            className="w-4 h-4 accent-rust-600"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-sm text-gray-300">{user.firstName}</span>
+                        </label>
+                        {share && (
+                          <div className="ml-6 mt-2 flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setDirectSharePermission(user.id, false)}
+                              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium ${
+                                !share.canEdit
+                                  ? 'border-rust-600 bg-rust-600/15 text-rust-500'
+                                  : 'border-void-600 text-gray-400'
+                              }`}
+                            >
+                              👁️ Kan se
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDirectSharePermission(user.id, true)}
+                              className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-medium ${
+                                share.canEdit
+                                  ? 'border-rust-600 bg-rust-600/15 text-rust-500'
+                                  : 'border-void-600 text-gray-400'
+                              }`}
+                            >
+                              ✏️ Kan redigere
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">Deler kun dette pin — ikke hele kategorien.</p>
+            </div>
           )}
 
           {isCreateMode && (

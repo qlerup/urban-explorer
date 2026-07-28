@@ -7,6 +7,7 @@ import { syncFjordHubUsers } from '@/lib/fjordhub'
 export interface UserShareState {
   userId: string
   categoryIds: string[]
+  pinIds: string[]
   uncategorized: boolean
   canEdit: boolean
 }
@@ -22,9 +23,10 @@ export async function GET() {
   // Hub-styrede brugere oprettes lokalt, så de kan vælges før første login
   await syncFjordHubUsers()
 
-  const [allUsers, categoriesResult, catSharesResult, uncatSharesResult] = await Promise.all([
+  const [allUsers, categoriesResult, pinsResult, catSharesResult, uncatSharesResult, pinSharesResult] = await Promise.all([
     listUsers(),
     pool.query('SELECT id, name, color FROM categories WHERE user_id = $1 ORDER BY name', [session.userId]),
+    pool.query('SELECT id, name FROM pins WHERE user_id = $1 ORDER BY name, created_at DESC', [session.userId]),
     pool.query(
       `SELECT cs.shared_with_id, cs.category_id, cs.can_edit
        FROM category_shares cs
@@ -36,13 +38,20 @@ export async function GET() {
       'SELECT shared_with_id, can_edit FROM uncategorized_pin_shares WHERE owner_id = $1',
       [session.userId]
     ),
+    pool.query(
+      `SELECT ps.shared_with_id, ps.pin_id, ps.can_edit
+       FROM pin_shares ps
+       JOIN pins p ON p.id = ps.pin_id
+       WHERE p.user_id = $1`,
+      [session.userId]
+    ),
   ])
 
   const shareMap = new Map<string, UserShareState>()
   const ensure = (userId: string): UserShareState => {
     let entry = shareMap.get(userId)
     if (!entry) {
-      entry = { userId, categoryIds: [], uncategorized: false, canEdit: false }
+      entry = { userId, categoryIds: [], pinIds: [], uncategorized: false, canEdit: false }
       shareMap.set(userId, entry)
     }
     return entry
@@ -57,12 +66,18 @@ export async function GET() {
     entry.uncategorized = true
     if (row.can_edit === true) entry.canEdit = true
   }
+  for (const row of pinSharesResult.rows) {
+    const entry = ensure(row.shared_with_id)
+    entry.pinIds.push(row.pin_id)
+    if (row.can_edit === true) entry.canEdit = true
+  }
 
   return NextResponse.json({
     users: allUsers
       .filter(u => u.id !== session.userId)
       .map(u => ({ id: u.id, firstName: u.firstName })),
     categories: categoriesResult.rows,
+    pins: pinsResult.rows,
     shares: Array.from(shareMap.values()),
   })
 }
@@ -75,6 +90,7 @@ export async function PUT(req: NextRequest) {
   const body = await req.json()
   const targetUserId = typeof body.userId === 'string' ? body.userId : ''
   const rawCategoryIds = Array.isArray(body.categoryIds) ? body.categoryIds : []
+  const rawPinIds = Array.isArray(body.pinIds) ? body.pinIds : []
   const uncategorized = body.uncategorized === true
   const canEdit = body.canEdit === true
 
@@ -90,6 +106,9 @@ export async function PUT(req: NextRequest) {
   const ownCategories = await pool.query('SELECT id FROM categories WHERE user_id = $1', [session.userId])
   const ownIds = new Set<string>(ownCategories.rows.map(row => row.id))
   const categoryIds = Array.from(new Set(rawCategoryIds.filter((id: unknown): id is string => typeof id === 'string' && ownIds.has(id))))
+  const ownPins = await pool.query('SELECT id FROM pins WHERE user_id = $1', [session.userId])
+  const ownPinIds = new Set<string>(ownPins.rows.map(row => row.id))
+  const pinIds = Array.from(new Set(rawPinIds.filter((id: unknown): id is string => typeof id === 'string' && ownPinIds.has(id))))
 
   const client = await pool.connect()
   try {
@@ -116,6 +135,18 @@ export async function PUT(req: NextRequest) {
         [session.userId, targetUserId, canEdit]
       )
     }
+    await client.query(
+      `DELETE FROM pin_shares ps
+       USING pins p
+       WHERE ps.pin_id = p.id AND p.user_id = $1 AND ps.shared_with_id = $2`,
+      [session.userId, targetUserId]
+    )
+    for (const pinId of pinIds) {
+      await client.query(
+        'INSERT INTO pin_shares (pin_id, shared_with_id, can_edit) VALUES ($1, $2, $3)',
+        [pinId, targetUserId, canEdit]
+      )
+    }
     await client.query('COMMIT')
   } catch (error) {
     await client.query('ROLLBACK')
@@ -126,6 +157,6 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    share: { userId: targetUserId, categoryIds, uncategorized, canEdit },
+    share: { userId: targetUserId, categoryIds, pinIds, uncategorized, canEdit },
   })
 }

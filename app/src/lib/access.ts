@@ -39,9 +39,13 @@ export async function getPinAccess(pinId: string, userId: string): Promise<PinAc
               JOIN category_shares cs ON cs.category_id = pc.category_id
               WHERE pc.pin_id = p.id AND cs.shared_with_id = $2
             ) AS is_shared,
+            ps.can_edit AS pin_share_can_edit,
+            ps.id IS NOT NULL AS is_pin_shared,
             ups.can_edit AS uncat_share_can_edit,
             ups.id IS NOT NULL AS is_uncat_shared
      FROM pins p
+     LEFT JOIN pin_shares ps
+       ON ps.pin_id = p.id AND ps.shared_with_id = $2
      LEFT JOIN uncategorized_pin_shares ups
        ON ups.owner_id = p.user_id AND ups.shared_with_id = $2
        AND NOT EXISTS (SELECT 1 FROM pin_categories pc WHERE pc.pin_id = p.id)
@@ -53,12 +57,12 @@ export async function getPinAccess(pinId: string, userId: string): Promise<PinAc
   const row = result.rows[0]
   const isOwner = row.is_owner === true
   const isCategoryOwner = row.is_category_owner === true
-  const canView = isOwner || isCategoryOwner || row.is_shared === true || row.is_uncat_shared === true
+  const canView = isOwner || isCategoryOwner || row.is_shared === true || row.is_pin_shared === true || row.is_uncat_shared === true
   if (!canView) return null
 
   return {
     isOwner,
-    canEdit: isOwner || isCategoryOwner || row.share_can_edit === true || row.uncat_share_can_edit === true,
+    canEdit: isOwner || isCategoryOwner || row.share_can_edit === true || row.pin_share_can_edit === true || row.uncat_share_can_edit === true,
     categoryIds: row.category_ids ?? [],
   }
 }

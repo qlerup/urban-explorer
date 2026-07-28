@@ -29,6 +29,16 @@ export async function POST(req: NextRequest) {
     : (typeof body.categoryId === 'string' && body.categoryId ? [body.categoryId] : [])
   const categoryIds = Array.from(new Set(rawCategoryIds.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)))
   const ownerId = typeof body.ownerId === 'string' && body.ownerId ? body.ownerId : session.userId
+  const directShares = new Map<string, boolean>()
+  if (ownerId === session.userId && Array.isArray(body.directShares)) {
+    for (const item of body.directShares) {
+      if (!item || typeof item !== 'object') continue
+      const share = item as { userId?: unknown; canEdit?: unknown }
+      if (typeof share.userId === 'string' && share.userId !== session.userId) {
+        directShares.set(share.userId, share.canEdit === true)
+      }
+    }
+  }
 
   if (!name || name.length > 200) {
     return NextResponse.json({ error: 'Navn er påkrævet (maks 200 tegn)' }, { status: 400 })
@@ -41,6 +51,16 @@ export async function POST(req: NextRequest) {
   }
   if (!Number.isInteger(rating) || rating < 0 || rating > 3) {
     return NextResponse.json({ error: 'Rating skal være mellem 0 og 3' }, { status: 400 })
+  }
+
+  if (directShares.size > 0) {
+    const shareUsers = await pool.query(
+      'SELECT id FROM users WHERE id = ANY($1::uuid[]) AND id != $2',
+      [Array.from(directShares.keys()), session.userId]
+    )
+    if ((shareUsers.rowCount ?? 0) !== directShares.size) {
+      return NextResponse.json({ error: 'En eller flere delingsbrugere er ugyldige' }, { status: 400 })
+    }
   }
 
   if (ownerId === session.userId) {
@@ -89,6 +109,12 @@ export async function POST(req: NextRequest) {
       await client.query(
         'INSERT INTO pin_categories (pin_id, category_id, position) VALUES ($1, $2, $3)',
         [row.id, categoryIds[position], position]
+      )
+    }
+    for (const [sharedWithId, canEdit] of directShares) {
+      await client.query(
+        'INSERT INTO pin_shares (pin_id, shared_with_id, can_edit) VALUES ($1, $2, $3)',
+        [row.id, sharedWithId, canEdit]
       )
     }
     await client.query('COMMIT')

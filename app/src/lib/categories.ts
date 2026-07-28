@@ -22,11 +22,22 @@ export async function getCategoriesForUser(userId: string): Promise<Category[]> 
 /** Kategorier andre brugere har delt med denne bruger. */
 export async function getCategoriesSharedWithUser(userId: string): Promise<Category[]> {
   const result = await pool.query(
-    `SELECT c.id, c.name, c.color, c.user_id AS owner_id, cs.can_edit, u.first_name AS owner_first_name
-     FROM category_shares cs
-     JOIN categories c ON c.id = cs.category_id
+    `SELECT c.id, c.name, c.color, c.user_id AS owner_id,
+            BOOL_OR(shared.can_edit) AS can_edit,
+            u.first_name AS owner_first_name
+     FROM (
+       SELECT cs.category_id, cs.can_edit
+       FROM category_shares cs
+       WHERE cs.shared_with_id = $1
+       UNION ALL
+       SELECT pc.category_id, FALSE AS can_edit
+       FROM pin_shares ps
+       JOIN pin_categories pc ON pc.pin_id = ps.pin_id
+       WHERE ps.shared_with_id = $1
+     ) shared
+     JOIN categories c ON c.id = shared.category_id
      JOIN users u ON u.id = c.user_id
-     WHERE cs.shared_with_id = $1
+     GROUP BY c.id, c.name, c.color, c.user_id, u.first_name
      ORDER BY c.name`,
     [userId]
   )
@@ -59,6 +70,14 @@ export async function getSharedWorkspacesForUser(userId: string): Promise<Shared
        FROM uncategorized_pin_shares ups
        JOIN users u ON u.id = ups.owner_id
        WHERE ups.shared_with_id = $1
+       UNION ALL
+       SELECT p.user_id AS owner_id, u.first_name AS owner_first_name,
+              FALSE AS can_edit,
+              NOT EXISTS (SELECT 1 FROM pin_categories pc WHERE pc.pin_id = p.id) AS is_uncategorized
+       FROM pin_shares ps
+       JOIN pins p ON p.id = ps.pin_id
+       JOIN users u ON u.id = p.user_id
+       WHERE ps.shared_with_id = $1
      ) shared
      GROUP BY owner_id, owner_first_name
      ORDER BY owner_first_name`,

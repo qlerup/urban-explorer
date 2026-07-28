@@ -13,16 +13,22 @@ interface CategoryOption {
   color: string
 }
 
+interface PinOption {
+  id: string
+  name: string
+}
+
 interface ShareState {
   categoryIds: string[]
+  pinIds: string[]
   uncategorized: boolean
   canEdit: boolean
 }
 
-const EMPTY_SHARE: ShareState = { categoryIds: [], uncategorized: false, canEdit: false }
+const EMPTY_SHARE: ShareState = { categoryIds: [], pinIds: [], uncategorized: false, canEdit: false }
 
 function shareSummary(share: ShareState | undefined, categoryCount: number): string {
-  if (!share || (share.categoryIds.length === 0 && !share.uncategorized)) return 'Deler ikke'
+  if (!share || (share.categoryIds.length === 0 && share.pinIds.length === 0 && !share.uncategorized)) return 'Deler ikke'
   const parts: string[] = []
   if (share.categoryIds.length > 0) {
     parts.push(
@@ -32,12 +38,16 @@ function shareSummary(share: ShareState | undefined, categoryCount: number): str
     )
   }
   if (share.uncategorized) parts.push('pins uden kategori')
+  if (share.pinIds.length > 0) {
+    parts.push(`${share.pinIds.length} ${share.pinIds.length === 1 ? 'enkelt pin' : 'enkelte pins'}`)
+  }
   return `Deler ${parts.join(' + ')} · ${share.canEdit ? 'kan redigere' : 'kan se'}`
 }
 
 export default function UserShareModal({ onClose }: { onClose: () => void }) {
   const [users, setUsers] = useState<UserOption[]>([])
   const [categories, setCategories] = useState<CategoryOption[]>([])
+  const [pins, setPins] = useState<PinOption[]>([])
   const [shares, setShares] = useState<Record<string, ShareState>>({})
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null)
   const [draft, setDraft] = useState<ShareState>(EMPTY_SHARE)
@@ -59,10 +69,12 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
         if (cancelled) return
         setUsers(data.users)
         setCategories(data.categories)
+        setPins(data.pins)
         const next: Record<string, ShareState> = {}
         for (const share of data.shares as ({ userId: string } & ShareState)[]) {
           next[share.userId] = {
             categoryIds: share.categoryIds,
+            pinIds: share.pinIds,
             uncategorized: share.uncategorized,
             canEdit: share.canEdit,
           }
@@ -79,8 +91,8 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
   }, [])
 
   const allSelected = useMemo(
-    () => draft.uncategorized && draft.categoryIds.length === categories.length,
-    [draft, categories]
+    () => draft.uncategorized && draft.categoryIds.length === categories.length && draft.pinIds.length === pins.length,
+    [draft, categories, pins]
   )
 
   function openUser(userId: string) {
@@ -89,7 +101,9 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
       return
     }
     const existing = shares[userId]
-    setDraft(existing ? { ...existing, categoryIds: [...existing.categoryIds] } : { ...EMPTY_SHARE, categoryIds: [] })
+    setDraft(existing
+      ? { ...existing, categoryIds: [...existing.categoryIds], pinIds: [...existing.pinIds] }
+      : { ...EMPTY_SHARE, categoryIds: [], pinIds: [] })
     setExpandedUserId(userId)
     setError(null)
     setSavedUserId(null)
@@ -104,11 +118,20 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
     }))
   }
 
+  function togglePin(pinId: string) {
+    setDraft(prev => ({
+      ...prev,
+      pinIds: prev.pinIds.includes(pinId)
+        ? prev.pinIds.filter(id => id !== pinId)
+        : [...prev.pinIds, pinId],
+    }))
+  }
+
   function toggleAll() {
     setDraft(prev =>
       allSelected
-        ? { ...prev, categoryIds: [], uncategorized: false }
-        : { ...prev, categoryIds: categories.map(c => c.id), uncategorized: true }
+        ? { ...prev, categoryIds: [], pinIds: [], uncategorized: false }
+        : { ...prev, categoryIds: categories.map(c => c.id), pinIds: pins.map(pin => pin.id), uncategorized: true }
     )
   }
 
@@ -152,7 +175,8 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
             Vælg en bruger og hvad der deles. Brugeren kan skifte mellem sit eget kort og dit delte
             arbejdsområde i filterpanelet. Pins, kategorier og 1x1 km-gitter følger det valgte område.{' '}
             <strong className="text-gray-400">Se</strong>: kan kun kigge.{' '}
-            <strong className="text-gray-400">Rediger</strong>: kan redigere og tilføje pins samt opdatere dit gitter.
+            <strong className="text-gray-400">Rediger</strong>: kan redigere det valgte. Nye pins og gitteradgang
+            kræver fortsat deling af en kategori eller pins uden kategori.
           </p>
 
           {loading ? (
@@ -166,7 +190,7 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
               {users.map(user => {
                 const isExpanded = expandedUserId === user.id
                 const current = shares[user.id]
-                const isSharing = !!current && (current.categoryIds.length > 0 || current.uncategorized)
+                const isSharing = !!current && (current.categoryIds.length > 0 || current.pinIds.length > 0 || current.uncategorized)
                 return (
                   <div key={user.id} className="border border-void-700 rounded-xl overflow-hidden">
                     <button
@@ -221,6 +245,25 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
                               <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-void-500" />
                               <span>Pins uden kategori</span>
                             </label>
+                            {pins.length > 0 && (
+                              <div className="border-t border-void-700 pt-2 mt-2">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Enkelte pins</p>
+                                <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                                  {pins.map(pin => (
+                                    <label key={pin.id} className="flex items-center gap-2.5 text-sm text-gray-300 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={draft.pinIds.includes(pin.id)}
+                                        onChange={() => togglePin(pin.id)}
+                                        className="accent-rust-600"
+                                      />
+                                      <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-sky-500" />
+                                      <span className="truncate">{pin.name}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -248,7 +291,7 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
                           {isSharing && (
                             <button
                               type="button"
-                              onClick={() => saveShare(user.id, { ...EMPTY_SHARE, categoryIds: [] })}
+                              onClick={() => saveShare(user.id, { ...EMPTY_SHARE, categoryIds: [], pinIds: [] })}
                               disabled={saving}
                               className="btn-secondary flex-1 text-xs !py-2"
                             >
@@ -258,7 +301,7 @@ export default function UserShareModal({ onClose }: { onClose: () => void }) {
                           <button
                             type="button"
                             onClick={() => saveShare(user.id, draft)}
-                            disabled={saving || (draft.categoryIds.length === 0 && !draft.uncategorized && !isSharing)}
+                            disabled={saving || (draft.categoryIds.length === 0 && draft.pinIds.length === 0 && !draft.uncategorized && !isSharing)}
                             className="btn-primary flex-1 text-xs !py-2"
                           >
                             {saving ? 'Gemmer...' : 'Gem deling'}
