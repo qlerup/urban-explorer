@@ -11,7 +11,8 @@ import {
 } from '@/lib/fjordhub'
 import { sendPasswordResetCode } from '@/lib/mail'
 
-const GENERIC_MESSAGE = 'Hvis email-adressen findes, er sikkerhedskoden sendt.'
+const GENERIC_MESSAGE =
+  'Hvis email-adressen findes, er sikkerhedskoden sendt. Husk også at kontrollere Spam eller Uønsket mail.'
 
 function sameHash(left: string, right: string): boolean {
   const a = Buffer.from(left)
