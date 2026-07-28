@@ -73,10 +73,28 @@ export async function sendPasswordResetCode(to: string, code: string): Promise<v
     `Hej\n\nDin sikkerhedskode til Urban Explorer er: ${code}\n\n` +
     'Koden udløber om 5 minutter. Hvis du ikke har bedt om den, kan du ignorere denne mail.'
   await transport(settings).sendMail({
-    from: settings.user,
+    from: { name: 'Urban Explorer', address: settings.user },
     to,
-    subject: 'Sikkerhedskode til Urban Explorer',
+    subject: `${code} er din sikkerhedskode til Urban Explorer`,
     text,
-    html: `<p>Hej</p><p>Din sikkerhedskode til Urban Explorer er:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>Koden udløber om 5 minutter. Hvis du ikke har bedt om den, kan du ignorere denne mail.</p>`,
+    html: `<!doctype html>
+<html lang="da"><body style="margin:0;padding:0;background:#f5f1e8">
+<div style="background:#f5f1e8;padding:32px 16px;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#29251c">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px">
+      <tr><td style="padding:0 6px 14px">
+        <div style="font-size:11px;letter-spacing:2px;color:#8a8272;text-transform:uppercase;font-weight:700">Urban Explorer</div>
+        <div style="font-family:'Palatino Linotype',Palatino,Georgia,serif;font-size:28px;font-weight:700;margin-top:4px">Nulstil adgangskode</div>
+      </td></tr>
+      <tr><td style="background:#fffdf7;border:1px solid #e3dccb;border-radius:14px;padding:24px">
+        <div style="font-size:14px;line-height:1.6;color:#514b40">Brug sikkerhedskoden herunder for at vælge en ny adgangskode.</div>
+        <div style="margin:22px 0;padding:18px 12px;background:#f8eee2;border:1px solid #e08a3c;border-radius:10px;text-align:center;font-size:30px;font-weight:800;letter-spacing:8px;color:#9a4f16">${code}</div>
+        <div style="font-size:13px;line-height:1.6;color:#8a8272"><strong style="color:#514b40">Koden udløber om 5 minutter.</strong><br>Hvis du ikke har bedt om at nulstille din adgangskode, kan du roligt ignorere mailen.</div>
+      </td></tr>
+      <tr><td style="padding:14px 6px 0;font-size:12px;color:#8a8272;text-align:center">Sendt automatisk af Urban Explorer · Du skal ikke besvare denne mail</td></tr>
+    </table>
+  </td></tr></table>
+</div>
+</body></html>`,
   })
 }

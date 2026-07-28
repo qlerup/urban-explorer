@@ -40,12 +40,32 @@ export async function POST(req: NextRequest) {
     }
 
     const recent = await pool.query(
-      `SELECT 1 FROM password_reset_challenges
-       WHERE user_id = $1 AND created_at > NOW() - INTERVAL '60 seconds' LIMIT 1`,
+      `SELECT id FROM password_reset_challenges
+       WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
+       ORDER BY created_at DESC LIMIT 1`,
       [user.id]
     )
-    if (recent.rows[0]) {
-      return NextResponse.json({ ok: true, message: GENERIC_MESSAGE, challengeId: fallbackId })
+    if (
+      recent.rows[0] &&
+      (await pool.query(
+        `SELECT 1 FROM password_reset_challenges
+         WHERE id = $1 AND created_at > NOW() - INTERVAL '60 seconds'`,
+        [recent.rows[0].id]
+      )).rows[0]
+    ) {
+      return NextResponse.json({ ok: true, message: GENERIC_MESSAGE, challengeId: recent.rows[0].id })
+    }
+    const hourly = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM password_reset_challenges
+       WHERE user_id = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
+      [user.id]
+    )
+    if (hourly.rows[0].count >= 5) {
+      return NextResponse.json({
+        ok: true,
+        message: GENERIC_MESSAGE,
+        challengeId: recent.rows[0]?.id || fallbackId,
+      })
     }
 
     const challengeId = randomUUID()
