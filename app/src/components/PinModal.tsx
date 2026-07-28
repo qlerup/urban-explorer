@@ -178,7 +178,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const skraafotoCenter = wgs84ToUtm32(lat, lng)
   const skraafotoUrl = `https://skraafoto.dataforsyningen.dk/?center=${encodeURIComponent(
     `${skraafotoCenter.easting.toFixed(2)},${skraafotoCenter.northing.toFixed(2)}`
-  )}`
+  )}&year=2023`
   const canManageDirectShares = !readOnly && isOwnPin && !createOwnerId
 
   useEffect(() => {
