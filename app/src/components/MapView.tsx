@@ -1153,10 +1153,13 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
 
     function buildIcon(pin: Pin) {
       const glyph = pin.icon || '📍'
+      const glyphMarkup = glyph.startsWith('/pin-icons/')
+        ? `<img src="${glyph}" alt="" style="width:34px;height:34px;object-fit:contain;display:block;" draggable="false">`
+        : glyph
       return L!.divIcon({
         html: `
           <div style="display:flex;flex-direction:column;align-items:center;">
-            <div style="box-sizing:border-box;width:57px;height:57px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;font-size:29px;border:4px solid black;box-shadow:0 3px 6px rgba(0,0,0,0.5)">${glyph}</div>
+            <div style="box-sizing:border-box;width:57px;height:57px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;font-size:29px;border:4px solid black;box-shadow:0 3px 6px rgba(0,0,0,0.5)">${glyphMarkup}</div>
             <div style="width:0;height:0;border-left:9px solid transparent;border-right:9px solid transparent;border-top:14px solid black;margin-top:-3px"></div>
           </div>
         `,

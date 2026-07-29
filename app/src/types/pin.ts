@@ -38,7 +38,30 @@ export interface SharedWorkspace {
   canEditUncategorized: boolean
 }
 
-export const PIN_ICON_OPTIONS = ['📍', '🏭', '🏚️', '🏥', '🏫', '🚉', '🏰', '⛪', '🌉', '🕳️', '🏢', '🚢', '🎪', '🏊', '🛖', '⚙️']
+export const CUSTOM_PIN_ICONS = [
+  { value: '/pin-icons/pin.svg', label: 'Pin' },
+  { value: '/pin-icons/doedt-spot.svg', label: 'Dødt spot' },
+  { value: '/pin-icons/hus.svg', label: 'Hus' },
+  { value: '/pin-icons/gaard.svg', label: 'Gård' },
+  { value: '/pin-icons/slot.svg', label: 'Slot' },
+  { value: '/pin-icons/kirke.svg', label: 'Kirke' },
+  { value: '/pin-icons/kirkegaard.svg', label: 'Kirkegård' },
+  { value: '/pin-icons/mansion.svg', label: 'Mansion' },
+  { value: '/pin-icons/industri.svg', label: 'Industri' },
+  { value: '/pin-icons/hold-oeje.svg', label: 'Hold øje' },
+  { value: '/pin-icons/overnatning.svg', label: 'Overnatning' },
+] as const
+
+export const EMOJI_PIN_ICONS = ['📍', '🏭', '🏚️', '🏥', '🏫', '🚉', '🏰', '⛪', '🌉', '🕳️', '🏢', '🚢', '🎪', '🏊', '🛖', '⚙️'] as const
+
+export const PIN_ICON_OPTIONS: readonly string[] = [
+  ...EMOJI_PIN_ICONS,
+  ...CUSTOM_PIN_ICONS.map(icon => icon.value),
+]
+
+export function getCustomPinIcon(icon: string) {
+  return CUSTOM_PIN_ICONS.find(option => option.value === icon)
+}
 
 export const PIN_STATUSES = ['vil_se', 'har_set', 'hold_oeje', 'doedt_spot'] as const
 export type PinStatus = (typeof PIN_STATUSES)[number]

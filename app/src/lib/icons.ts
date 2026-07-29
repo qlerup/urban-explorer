@@ -35,15 +35,30 @@ function loadEmojiInner(emoji: string): string | null {
   }
 }
 
+function loadCustomIconInner(icon: string): string | null {
+  if (!/^\/pin-icons\/[a-z0-9-]+\.svg$/.test(icon)) return null
+  try {
+    const svg = readFileSync(path.join(process.cwd(), 'public', ...icon.split('/').filter(Boolean)), 'utf8')
+    const match = svg.match(/<svg[^>]*>([\s\S]*)<\/svg>/)
+    return match ? match[1] : null
+  } catch {
+    return null
+  }
+}
+
 // Bygger et rundt KML-markørikon: hvid baggrund med sort kant og evt. kategori-emoji ovenpå,
 // renderet som ren vektorgrafik via resvg — ingen skrifttype eller font-rendering nødvendig.
 export function createMarkerIconPng(emoji: string | null, size = 88): Buffer {
-  const glyphInner = emoji ? loadEmojiInner(emoji) : null
+  const isCustomIcon = !!emoji?.startsWith('/pin-icons/')
+  const glyphInner = emoji
+    ? (isCustomIcon ? loadCustomIconInner(emoji) : loadEmojiInner(emoji))
+    : null
   const glyphSize = size * 0.58
   const glyphOffset = (size - glyphSize) / 2
+  const glyphViewBox = isCustomIcon ? '0 0 218 218' : '0 0 36 36'
 
   const glyphMarkup = glyphInner
-    ? `<svg x="${glyphOffset}" y="${glyphOffset}" width="${glyphSize}" height="${glyphSize}" viewBox="0 0 36 36">${glyphInner}</svg>`
+    ? `<svg x="${glyphOffset}" y="${glyphOffset}" width="${glyphSize}" height="${glyphSize}" viewBox="${glyphViewBox}">${glyphInner}</svg>`
     : ''
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type { Category, Pin, PinImage, PinRoute, PinStatus } from '@/types/pin'
-import { PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS, PIN_ICON_OPTIONS } from '@/types/pin'
+import { PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS, PIN_ICON_OPTIONS, getCustomPinIcon } from '@/types/pin'
+import PinIcon from './PinIcon'
 import { formatDistance, wgs84ToUtm32 } from '@/lib/geo'
 import StarRating from './StarRating'
 
@@ -599,7 +600,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
             <p className="text-xs text-gray-500 mb-2">Ikon</p>
             {readOnly ? (
               <span className="w-10 h-10 rounded-lg border border-void-600 flex items-center justify-center text-xl">
-                {icon}
+                <PinIcon icon={icon} className={getCustomPinIcon(icon) ? 'w-7 h-7' : ''} />
               </span>
             ) : (
               <div className="flex gap-1.5 flex-wrap">
@@ -611,9 +612,10 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
                     className={`w-9 h-9 rounded-lg border flex items-center justify-center text-lg transition-colors ${
                       icon === ic ? 'border-rust-600 bg-rust-600/15' : 'border-void-600 hover:bg-void-800'
                     }`}
-                    aria-label={`Vælg ikon ${ic}`}
+                    aria-label={`Vælg ikon ${getCustomPinIcon(ic)?.label ?? ic}`}
+                    title={getCustomPinIcon(ic)?.label}
                   >
-                    {ic}
+                    <PinIcon icon={ic} className={getCustomPinIcon(ic) ? 'w-6 h-6' : ''} />
                   </button>
                 ))}
               </div>

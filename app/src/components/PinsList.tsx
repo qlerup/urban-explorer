@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import type { Category, Pin, PinStatus } from '@/types/pin'
+import { getCustomPinIcon } from '@/types/pin'
+import PinIcon from './PinIcon'
 import { PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS } from '@/types/pin'
 import PinModal from './PinModal'
 import StarRating from './StarRating'
@@ -345,7 +347,7 @@ export default function PinsList({
                     />
                   ) : (
                     <div className="w-28 h-28 rounded-xl bg-void-800 border border-void-700 shrink-0 flex items-center justify-center text-2xl">
-                      {pin.icon || '📍'}
+                      <PinIcon icon={pin.icon} className={getCustomPinIcon(pin.icon) ? 'w-5 h-5' : ''} />
                     </div>
                   )}
 
