@@ -1412,7 +1412,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
           <span className={`text-gray-500 shrink-0 transition-transform ${iconFilterOpen ? 'rotate-180' : ''}`} aria-hidden="true">▾</span>
         </button>
         {iconFilterOpen && (
-          <div className="mt-1.5 rounded-lg border border-void-600 bg-void-800 p-1.5 space-y-0.5 max-h-64 overflow-y-auto">
+          <div className="ue-scroll mt-1.5 rounded-lg border border-void-600 bg-void-800 p-1.5 space-y-0.5 max-h-64 overflow-y-auto">
             <button
               type="button"
               onClick={() => setActiveIconIds(null)}
