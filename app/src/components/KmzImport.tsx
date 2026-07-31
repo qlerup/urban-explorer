@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import JSZip from 'jszip'
-import type { Category, PinStatus } from '@/types/pin'
+import { PIN_ICON_OPTIONS, type Category, type PinStatus } from '@/types/pin'
 import PinModal from './PinModal'
 
 interface ImportedPin {
@@ -51,7 +51,7 @@ function parseKml(kml: string, source: string): ImportedPin[] {
       lng,
       rating: 0,
       status: 'vil_se' as PinStatus,
-      icon: '📍',
+      icon: PIN_ICON_OPTIONS[0],
     }]
   })
 }
@@ -70,15 +70,15 @@ export default function KmzImport({ categories }: { categories: Category[] }) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const [queue, setQueue] = useState<ImportedPin[]>([])
-  const [current, setCurrent] = useState(0)
+  const [openId, setOpenId] = useState<string | null>(null)
   const [saved, setSaved] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  function closeImport() {
-    if (queue.length > 0 && !confirm('Luk importen? Pins, du ikke har gemt, bliver ikke importeret.')) return
+  function closeList() {
+    if (queue.length > 0 && !confirm('Luk importen? De resterende pins bliver ikke importeret.')) return
     setQueue([])
-    setCurrent(0)
+    setOpenId(null)
     if (saved > 0) router.refresh()
     setSaved(0)
   }
@@ -92,7 +92,7 @@ export default function KmzImport({ categories }: { categories: Category[] }) {
       if (results.length === 0) throw new Error('Der blev ikke fundet nogen punkt-pins i filerne')
       if (results.length > 2000) throw new Error('Der kan højst importeres 2.000 pins ad gangen')
       setQueue(results)
-      setCurrent(0)
+      setOpenId(null)
       setSaved(0)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Filen kunne ikke læses')
@@ -102,12 +102,12 @@ export default function KmzImport({ categories }: { categories: Category[] }) {
     }
   }
 
-  function removeCurrent() {
-    setQueue(previous => previous.filter((_, index) => index !== current))
-    setCurrent(previous => Math.max(0, Math.min(previous, queue.length - 2)))
+  function removeFromQueue(id: string) {
+    setQueue(previous => previous.filter(item => item.id !== id))
   }
 
-  const draft = queue[current]
+  const draft = queue.find(item => item.id === openId) ?? null
+
   return (
     <>
       <input ref={inputRef} type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" multiple className="hidden" onChange={event => void selectFiles(event.target.files)} />
@@ -116,44 +116,62 @@ export default function KmzImport({ categories }: { categories: Category[] }) {
       </button>
       {error && <p className="fixed right-4 top-20 z-[2200] max-w-sm rounded-xl border border-red-800/60 bg-red-950 px-4 py-3 text-sm text-red-200 shadow-xl">{error}</p>}
 
-      {draft && (
-        <>
-          <div className="fixed left-3 top-3 z-[2050] max-w-[calc(100vw-6rem)] rounded-xl border border-void-600 bg-void-950/95 px-3 py-2 shadow-xl md:left-5 md:top-20 md:w-64">
-            <div className="flex items-center gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-gray-100">KMZ-import</p>
-                <p className="text-[11px] text-gray-400">{current + 1} af {queue.length} · {saved} gemt</p>
+      {queue.length > 0 && !draft && (
+        <div className="ue-modal-backdrop fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/60" onClick={closeList}>
+          <div
+            className="ue-modal-panel w-full md:max-w-md bg-void-900 md:rounded-2xl rounded-t-2xl border border-void-700 max-h-[85vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-void-700 sticky top-0 bg-void-900">
+              <div className="min-w-0">
+                <h2 className="font-semibold text-gray-100 truncate">KMZ-import</h2>
+                <p className="text-xs text-gray-500">{queue.length} tilbage · {saved} gemt</p>
               </div>
-              <button type="button" onClick={removeCurrent} className="text-xs text-gray-400 hover:text-red-300">Spring over</button>
+              <button onClick={closeList} className="text-gray-400 hover:text-gray-200 text-2xl leading-none px-1">×</button>
             </div>
-            <div className="mt-2 hidden max-h-52 overflow-y-auto border-t border-void-700 pt-2 md:block">
-              {queue.map((item, index) => (
-                <button key={item.id} type="button" onClick={() => {
-                  if (index !== current && confirm('Skift pin? Ændringer i den åbne pin bliver nulstillet.')) setCurrent(index)
-                }} className={`block w-full truncate rounded px-2 py-1 text-left text-xs ${index === current ? 'bg-rust-600/20 text-rust-400' : 'text-gray-500 hover:bg-void-800'}`}>
-                  {index + 1}. {item.name}
-                </button>
+            <div>
+              {queue.map(item => (
+                <div key={item.id} className="flex items-center gap-2 px-5 py-3 border-b border-void-800">
+                  <button
+                    type="button"
+                    onClick={() => setOpenId(item.id)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <p className="text-sm font-medium text-gray-200 truncate">{item.name}</p>
+                    <p className="font-mono text-xs text-gray-500">{item.lat.toFixed(6)}, {item.lng.toFixed(6)}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeFromQueue(item.id)}
+                    className="text-xs text-gray-400 hover:text-red-300 shrink-0"
+                  >
+                    Fjern
+                  </button>
+                </div>
               ))}
             </div>
           </div>
-          <PinModal
-            key={draft.id}
-            coords={{ lat: draft.lat, lng: draft.lng }}
-            pin={null}
-            categories={categories}
-            initialValues={draft}
-            createTitle={`Importér pin ${current + 1} af ${queue.length}`}
-            onClose={closeImport}
-            onCreated={() => {
-              setSaved(value => value + 1)
-              setQueue(previous => previous.filter((_, index) => index !== current))
-              setCurrent(previous => Math.max(0, Math.min(previous, queue.length - 2)))
-              router.refresh()
-            }}
-            onUpdated={() => {}}
-            onDeleted={() => {}}
-          />
-        </>
+        </div>
+      )}
+
+      {draft && (
+        <PinModal
+          key={draft.id}
+          coords={{ lat: draft.lat, lng: draft.lng }}
+          pin={null}
+          categories={categories}
+          initialValues={draft}
+          createTitle={draft.name}
+          onClose={() => setOpenId(null)}
+          onCreated={() => {
+            setSaved(value => value + 1)
+            setQueue(previous => previous.filter(item => item.id !== draft.id))
+            setOpenId(null)
+            router.refresh()
+          }}
+          onUpdated={() => {}}
+          onDeleted={() => {}}
+        />
       )}
     </>
   )

@@ -4,7 +4,7 @@ import { getSession } from '@/lib/auth'
 import { getPinAccess } from '@/lib/access'
 import { canUseCategory } from '@/lib/categories'
 import { deletePinDir } from '@/lib/uploads'
-import { isPinStatus, PIN_ICON_OPTIONS } from '@/types/pin'
+import { isPinStatus, VALID_PIN_ICONS } from '@/types/pin'
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   let icon: string | undefined
   if (hasIcon) {
-    if (!PIN_ICON_OPTIONS.includes(body.icon)) {
+    if (!VALID_PIN_ICONS.includes(body.icon)) {
       return NextResponse.json({ error: 'Ugyldigt ikon' }, { status: 400 })
     }
     icon = body.icon

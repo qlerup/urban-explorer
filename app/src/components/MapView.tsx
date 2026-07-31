@@ -135,6 +135,11 @@ const GRID_MIN_ZOOM = 12
 const GRID_MAX_CELLS = 4000
 const GRID_MULTI_CLICK_MAX_GAP_MS = 500
 const GRID_ACTIVATION_CLICK_COUNT = 3
+// Matrikelinfo udløses af et langt tryk (hold nede) i stedet for et almindeligt klik,
+// så det ikke også trigges af det første tryk i en dobbelt-tryk (sæt pin) eller
+// tredobbelt-tryk (markér gitterfelt) - de tryk skal nå at blive annulleret her først.
+const CADASTRAL_LONG_PRESS_MS = 500
+const CADASTRAL_LONG_PRESS_MOVE_TOLERANCE_PX = 10
 const CADASTRAL_WMS_URL = 'https://api.dataforsyningen.dk/wms/cp_inspire'
 const CADASTRAL_LAYER = 'CP.CadastralParcel'
 const CADASTRAL_MIN_ZOOM = 15
@@ -1124,15 +1129,48 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady || !cadastralEnabled) return
+    const containerEl = map.getContainer()
 
-    const handleCadastralClick = (event: Leaflet.LeafletMouseEvent) => {
-      if (pendingCenter || newPinCoords || selectedPin) return
-      void loadCadastralParcelInfo(event)
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let start: { x: number; y: number; latlng: Leaflet.LatLng } | null = null
+
+    function cancelPress() {
+      if (timer) clearTimeout(timer)
+      timer = null
+      start = null
     }
 
-    map.on('click', handleCadastralClick)
+    function handlePointerDown(domEvent: PointerEvent) {
+      if (domEvent.button !== 0) return
+      const target = domEvent.target as Element | null
+      if (target?.closest('.leaflet-marker-icon, .ue-grid-cell, .leaflet-control, button, a')) return
+      if (pendingCenter || newPinCoords || selectedPin) return
+      const latlng = map!.mouseEventToLatLng(domEvent as unknown as MouseEvent)
+      start = { x: domEvent.clientX, y: domEvent.clientY, latlng }
+      timer = setTimeout(() => {
+        if (!start) return
+        void loadCadastralParcelInfo({ latlng: start.latlng } as Leaflet.LeafletMouseEvent)
+        start = null
+      }, CADASTRAL_LONG_PRESS_MS)
+    }
+
+    function handlePointerMove(domEvent: PointerEvent) {
+      if (!start) return
+      const dx = domEvent.clientX - start.x
+      const dy = domEvent.clientY - start.y
+      if (Math.hypot(dx, dy) > CADASTRAL_LONG_PRESS_MOVE_TOLERANCE_PX) cancelPress()
+    }
+
+    containerEl.addEventListener('pointerdown', handlePointerDown)
+    containerEl.addEventListener('pointermove', handlePointerMove)
+    containerEl.addEventListener('pointerup', cancelPress)
+    containerEl.addEventListener('pointercancel', cancelPress)
     return () => {
-      map.off('click', handleCadastralClick)
+      cancelPress()
+      containerEl.removeEventListener('pointerdown', handlePointerDown)
+      containerEl.removeEventListener('pointermove', handlePointerMove)
+      containerEl.removeEventListener('pointerup', cancelPress)
+      containerEl.removeEventListener('pointercancel', cancelPress)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cadastralEnabled, mapReady, pendingCenter, newPinCoords, selectedPin])

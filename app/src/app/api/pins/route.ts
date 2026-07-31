@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { getPinsForUser, mapPinRow } from '@/lib/pins'
-import { isPinStatus, PIN_ICON_OPTIONS } from '@/types/pin'
+import { isPinStatus, PIN_ICON_OPTIONS, VALID_PIN_ICONS } from '@/types/pin'
 
 export async function GET() {
   const session = await getSession()
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const longitude = Number(body.longitude)
   const rating = body.rating != null ? Number(body.rating) : 0
   const status = isPinStatus(body.status) ? body.status : 'vil_se'
-  const icon = typeof body.icon === 'string' && PIN_ICON_OPTIONS.includes(body.icon) ? body.icon : '📍'
+  const icon = typeof body.icon === 'string' && VALID_PIN_ICONS.includes(body.icon) ? body.icon : PIN_ICON_OPTIONS[0]
   const rawCategoryIds = Array.isArray(body.categoryIds)
     ? body.categoryIds
     : (typeof body.categoryId === 'string' && body.categoryId ? [body.categoryId] : [])

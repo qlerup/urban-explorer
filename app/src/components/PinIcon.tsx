@@ -1,4 +1,4 @@
-import { getCustomPinIcon } from '@/types/pin'
+import { getCustomPinIcon, PIN_ICON_OPTIONS } from '@/types/pin'
 
 interface Props {
   icon: string | null | undefined
@@ -6,7 +6,7 @@ interface Props {
 }
 
 export default function PinIcon({ icon, className = '' }: Props) {
-  const value = icon || '📍'
+  const value = icon || PIN_ICON_OPTIONS[0]
   const customIcon = getCustomPinIcon(value)
 
   if (customIcon) {

@@ -52,11 +52,16 @@ export const CUSTOM_PIN_ICONS = [
   { value: '/pin-icons/overnatning.svg', label: 'Overnatning' },
 ] as const
 
-export const EMOJI_PIN_ICONS = ['📍', '🏭', '🏚️', '🏥', '🏫', '🚉', '🏰', '⛪', '🌉', '🕳️', '🏢', '🚢', '🎪', '🏊', '🛖', '⚙️'] as const
+// Ældre pins kan stadig have et af disse emoji-ikoner gemt fra før vi lavede vores
+// egne. De er ikke længere valgbare i ikon-vælgeren, men skal fortsat accepteres
+// som gyldig værdi, så gamle pins ikke fejler ved redigering.
+const LEGACY_EMOJI_PIN_ICONS = ['📍', '🏭', '🏚️', '🏥', '🏫', '🚉', '🏰', '⛪', '🌉', '🕳️', '🏢', '🚢', '🎪', '🏊', '🛖', '⚙️'] as const
 
-export const PIN_ICON_OPTIONS: readonly string[] = [
-  ...EMOJI_PIN_ICONS,
-  ...CUSTOM_PIN_ICONS.map(icon => icon.value),
+export const PIN_ICON_OPTIONS: readonly string[] = CUSTOM_PIN_ICONS.map(icon => icon.value)
+
+export const VALID_PIN_ICONS: readonly string[] = [
+  ...LEGACY_EMOJI_PIN_ICONS,
+  ...PIN_ICON_OPTIONS,
 ]
 
 export function getCustomPinIcon(icon: string) {
