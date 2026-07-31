@@ -140,13 +140,6 @@ body {
 
 .ue-grid-cell {
   cursor: pointer;
-  transition: fill-opacity 0.1s ease;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .ue-grid-cell:hover {
-    fill-opacity: 0.18 !important;
-  }
 }
 
 .ue-cadastre-layer {
