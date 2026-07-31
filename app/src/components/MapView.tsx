@@ -7,7 +7,8 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import type { Category, Pin, PinRoute, PinStatus, RoutePoint, SharedWorkspace } from '@/types/pin'
-import { PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS } from '@/types/pin'
+import { CUSTOM_PIN_ICONS, PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS } from '@/types/pin'
+import PinIcon from './PinIcon'
 import PinModal from './PinModal'
 import SharePickerModal from './SharePickerModal'
 import UserShareModal from './UserShareModal'
@@ -336,6 +337,11 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   )
   const [activeStatuses, setActiveStatuses] = useState<Set<PinStatus>>(() => new Set(PIN_STATUSES))
   const [activeRatings, setActiveRatings] = useState<Set<number>>(() => new Set([0, 1, 2, 3]))
+  // null = intet ikon-filter aktivt ("vis alle") - skal ikke forveksles med et tomt Set,
+  // som ville skjule alt. Sikrer også at gamle pins med et udgået emoji-ikon altid vises,
+  // indtil brugeren aktivt begynder at filtrere på ikon.
+  const [activeIconIds, setActiveIconIds] = useState<Set<string> | null>(null)
+  const [iconFilterOpen, setIconFilterOpen] = useState(false)
   const [sharePickerOpen, setSharePickerOpen] = useState(false)
   const [userShareOpen, setUserShareOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -417,6 +423,14 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     setActiveRatings(prev => {
       const next = new Set(prev)
       if (next.has(r)) next.delete(r); else next.add(r)
+      return next
+    })
+  }
+
+  function toggleIconFilter(icon: string) {
+    setActiveIconIds(prev => {
+      const next = new Set(prev ?? CUSTOM_PIN_ICONS.map(option => option.value))
+      if (next.has(icon)) next.delete(icon); else next.add(icon)
       return next
     })
   }
@@ -699,9 +713,10 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         return pinMatchesActiveCategories(pin, activeCategoryIds)
           && activeStatuses.has(pin.status)
           && activeRatings.has(pin.rating)
+          && (activeIconIds === null || activeIconIds.has(pin.icon))
       })
     },
-    [workspacePins, pinsVisible, activeCategoryIds, activeStatuses, activeRatings]
+    [workspacePins, pinsVisible, activeCategoryIds, activeStatuses, activeRatings, activeIconIds]
   )
 
   useEffect(() => {
@@ -1383,6 +1398,52 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
           </div>
         </div>
       )}
+      <div>
+        <p className="text-sm md:text-xs text-gray-400 mb-1.5">Ikon</p>
+        <button
+          type="button"
+          onClick={() => setIconFilterOpen(prev => !prev)}
+          className="w-full flex items-center justify-between gap-2 text-sm md:text-xs font-medium px-4 py-2.5 md:px-2.5 md:py-1.5 rounded-lg md:rounded-lg border border-void-600 text-gray-200 hover:border-void-500 transition-colors"
+          aria-expanded={iconFilterOpen}
+        >
+          <span className="truncate">
+            {activeIconIds === null ? 'Alle ikoner' : `${activeIconIds.size} af ${CUSTOM_PIN_ICONS.length} valgt`}
+          </span>
+          <span className={`text-gray-500 shrink-0 transition-transform ${iconFilterOpen ? 'rotate-180' : ''}`} aria-hidden="true">▾</span>
+        </button>
+        {iconFilterOpen && (
+          <div className="mt-1.5 rounded-lg border border-void-600 bg-void-800 p-1.5 space-y-0.5 max-h-64 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setActiveIconIds(null)}
+              className={`w-full flex items-center gap-2 rounded-md px-2 py-2 md:py-1.5 text-left text-sm md:text-xs transition-colors ${
+                activeIconIds === null ? 'bg-rust-600/20 text-rust-400' : 'text-gray-300 hover:bg-void-700'
+              }`}
+            >
+              <span className="w-5 text-center shrink-0">{activeIconIds === null ? '✓' : ''}</span>
+              Vis alle
+            </button>
+            <div className="border-t border-void-700 my-1" />
+            {CUSTOM_PIN_ICONS.map(option => {
+              const active = activeIconIds === null || activeIconIds.has(option.value)
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => toggleIconFilter(option.value)}
+                  className={`w-full flex items-center gap-2 rounded-md px-2 py-2 md:py-1.5 text-left text-sm md:text-xs transition-colors hover:bg-void-700 ${
+                    active ? 'text-gray-100' : 'text-gray-500 opacity-50'
+                  }`}
+                >
+                  <span className="w-5 text-center shrink-0">{active ? '✓' : ''}</span>
+                  <PinIcon icon={option.value} className="w-5 h-5 shrink-0" />
+                  <span className="truncate flex-1">{option.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
       <div>
         <p className="text-sm md:text-xs text-gray-400 mb-1.5">Mærke</p>
         <div className="flex flex-wrap gap-2 md:flex-col md:gap-1.5 md:items-start">
