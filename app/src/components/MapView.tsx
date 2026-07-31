@@ -296,10 +296,13 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   const baseLayerRef = useRef<Leaflet.TileLayer | null>(null)
   const searchMarkerRef = useRef<Leaflet.CircleMarker | null>(null)
   const locateMarkerRef = useRef<Leaflet.Marker | null>(null)
-  const nativeDblClickCleanupRef = useRef<(() => void) | null>(null)
   const lastPointerTypeRef = useRef<string>('mouse')
-  const gridClickSequenceRef = useRef<{ key: string; time: number; count: number } | null>(null)
   const workspaceCanEditRef = useRef(true)
+  const cadastralEnabledRef = useRef(false)
+  const gridEnabledRef = useRef(false)
+  const pendingCenterRef = useRef<{ purpose: 'new-pin' | 'route-point' } | null>(null)
+  const newPinCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
+  const selectedPinRef = useRef<Pin | null>(null)
   const measureLayerRef = useRef<Leaflet.LayerGroup | null>(null)
   const viewRouteLayerRef = useRef<Leaflet.LayerGroup | null>(null)
   const gridLayerRef = useRef<Leaflet.LayerGroup | null>(null)
@@ -368,6 +371,11 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     activeWorkspaceOwnerId ? pin.ownerId === activeWorkspaceOwnerId : !pin.ownerId
   )
   workspaceCanEditRef.current = workspaceCanEdit
+  cadastralEnabledRef.current = cadastralEnabled
+  gridEnabledRef.current = gridEnabled
+  pendingCenterRef.current = pendingCenter
+  newPinCoordsRef.current = newPinCoords
+  selectedPinRef.current = selectedPin
 
   function toggleCategory(id: string) {
     setActiveCategoryIds(prev => {
@@ -513,7 +521,6 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   }
 
   function toggleGridEnabled() {
-    gridClickSequenceRef.current = null
     setGridEnabled(prev => {
       lastGridEnabled = !prev
       return !prev
@@ -586,20 +593,6 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         message: error instanceof Error ? error.message : 'Kunne ikke hente matrikelinfo',
       })
     }
-  }
-
-  function shouldToggleGridCellFromClick(key: string) {
-    const now = typeof performance === 'undefined' ? Date.now() : performance.now()
-    const sequence = gridClickSequenceRef.current
-    const continuesSequence =
-      !!sequence
-      && sequence.key === key
-      && now - sequence.time <= GRID_MULTI_CLICK_MAX_GAP_MS
-    const count = continuesSequence ? sequence.count + 1 : 1
-    const shouldActivate = count >= GRID_ACTIVATION_CLICK_COUNT
-
-    gridClickSequenceRef.current = shouldActivate ? null : { key, time: now, count }
-    return shouldActivate
   }
 
   async function toggleGridCell(row: number, col: number) {
@@ -817,49 +810,6 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         })
       }
 
-      // Lytter direkte på browserens native dblclick i stedet for Leaflets eget
-      // semantiske 'dblclick'-event, som i kombination med doubleClickZoom:false
-      // kan ende i en hængende klik/drag-tilstand på nogle browsere.
-      if (!readOnly) {
-        const containerEl = map.getContainer()
-
-        const handlePointerDown = (e: PointerEvent) => {
-          lastPointerTypeRef.current = e.pointerType
-        }
-        containerEl.addEventListener('pointerdown', handlePointerDown)
-
-        const handleNativeDblClick = (domEvent: MouseEvent) => {
-          // Sætter pin uanset om der klikkes oven på et gittterfelt - gitterfelter
-          // dækker hele viewporten når gitteret er slået til, så uden dette ville
-          // dobbelt-tryk aldrig kunne sætte en pin med gitter tændt.
-          domEvent.preventDefault()
-          if (!workspaceCanEditRef.current) return
-          const latlng = map.mouseEventToLatLng(domEvent)
-          setSelectedPin(null)
-          setMeasureMode(null)
-          setMeasurePoints([])
-          setShowRoutePicker(false)
-          setEditingRoute(null)
-
-          if (lastPointerTypeRef.current === 'touch') {
-            // På telefon er det svært at ramme det præcise sted med en finger,
-            // så kortet centreres om tappet punkt og brugeren kan finjustere før bekræftelse.
-            setNewPinCoords(null)
-            map.panTo(latlng, { animate: true, duration: 0.4 })
-            setPendingCenter({ purpose: 'new-pin' })
-          } else {
-            // På pc/mus er det let at ramme præcist - sæt pin direkte som hidtil.
-            setPendingCenter(null)
-            setNewPinCoords({ lat: latlng.lat, lng: latlng.lng })
-          }
-        }
-        containerEl.addEventListener('dblclick', handleNativeDblClick)
-        nativeDblClickCleanupRef.current = () => {
-          containerEl.removeEventListener('pointerdown', handlePointerDown)
-          containerEl.removeEventListener('dblclick', handleNativeDblClick)
-        }
-      }
-
       mapRef.current = map
       setMapReady(true)
     })
@@ -870,8 +820,6 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         const c = mapRef.current.getCenter()
         lastMapView = { center: [c.lat, c.lng], zoom: mapRef.current.getZoom() }
       }
-      nativeDblClickCleanupRef.current?.()
-      nativeDblClickCleanupRef.current = null
       baseLayerRef.current?.remove()
       baseLayerRef.current = null
       searchMarkerRef.current?.remove()
@@ -1012,16 +960,6 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
               className: readOnly || !workspaceCanEdit ? '' : 'ue-grid-cell',
             }
           )
-          if (!readOnly && workspaceCanEdit) {
-            rect.on('click', (event: Leaflet.LeafletMouseEvent) => {
-              const originalEvent = event.originalEvent
-              originalEvent.preventDefault()
-              L!.DomEvent.stop(originalEvent)
-              const key = gridCellKey(row, col)
-              if (!shouldToggleGridCellFromClick(key)) return
-              void toggleGridCell(row, col)
-            })
-          }
           rect.addTo(layer)
         }
       }
@@ -1125,57 +1063,147 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     }
   }, [cadastralEnabled, selectedCadastralFeatureId, mapReady])
 
+  // Samlet gestus-genkendelse for langt tryk (matrikelinfo), dobbelt-tryk (sæt pin)
+  // og tredobbelt-tryk (markér gitterfelt). De tre skal kunne leve side om side,
+  // også når gitter+matrikel begge er tændt og dækker hele viewporten - derfor
+  // bruges rå pointer-events på containeren i stedet for browserens native
+  // dblclick og separate klik-handlere pr. gittercelle, som ellers uafhængigt af
+  // hinanden reagerede på det samme tryk og gik i vejen for hinanden. Et
+  // dobbelt-tryk må heller ikke committe sig selv, før vi ved om der kommer et
+  // tredje tryk - derfor venter vi altid GRID_MULTI_CLICK_MAX_GAP_MS, efter
+  // sidste tryk, før en tryk-sekvens på 2 eller 3 udløses.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady || !cadastralEnabled) return
+    // Bemærk: readOnly blokerer bevidst IKKE hele effekten - langt tryk til
+    // matrikelinfo skal virke i den delte, skrivebeskyttede visning ligesom før.
+    // Pin-sætning og gittermarkering tjekker selv readOnly/workspaceCanEdit.
+    if (!map || !mapReady) return
     const containerEl = map.getContainer()
 
-    let timer: ReturnType<typeof setTimeout> | null = null
-    let start: { x: number; y: number; latlng: Leaflet.LatLng } | null = null
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null
+    let press: { x: number; y: number; latlng: Leaflet.LatLng; pointerType: string; longPressFired: boolean } | null = null
+    let tapResolveTimer: ReturnType<typeof setTimeout> | null = null
+    let tapSequence: { x: number; y: number; latlng: Leaflet.LatLng; pointerType: string; count: number } | null = null
 
-    function cancelPress() {
-      if (timer) clearTimeout(timer)
-      timer = null
-      start = null
+    function clearLongPress() {
+      if (longPressTimer) clearTimeout(longPressTimer)
+      longPressTimer = null
+    }
+
+    function clearTapSequence() {
+      if (tapResolveTimer) clearTimeout(tapResolveTimer)
+      tapResolveTimer = null
+      tapSequence = null
+    }
+
+    function isBusy() {
+      return !!(pendingCenterRef.current || newPinCoordsRef.current || selectedPinRef.current)
+    }
+
+    function setPinAt(latlng: Leaflet.LatLng, pointerType: string) {
+      if (readOnly || !workspaceCanEditRef.current) return
+      setSelectedPin(null)
+      setMeasureMode(null)
+      setMeasurePoints([])
+      setShowRoutePicker(false)
+      setEditingRoute(null)
+      if (pointerType === 'touch') {
+        // På telefon er det svært at ramme det præcise sted med en finger,
+        // så kortet centreres om tappet punkt og brugeren kan finjustere før bekræftelse.
+        setNewPinCoords(null)
+        map!.panTo(latlng, { animate: true, duration: 0.4 })
+        setPendingCenter({ purpose: 'new-pin' })
+      } else {
+        // På pc/mus er det let at ramme præcist - sæt pin direkte som hidtil.
+        setPendingCenter(null)
+        setNewPinCoords({ lat: latlng.lat, lng: latlng.lng })
+      }
+    }
+
+    function markGridCellAt(latlng: Leaflet.LatLng) {
+      if (readOnly || !workspaceCanEditRef.current || !gridEnabledRef.current || map!.getZoom() < GRID_MIN_ZOOM) return
+      const { row, col } = gridCellForLatLng(latlng.lat, latlng.lng)
+      void toggleGridCell(row, col)
+    }
+
+    function resolveTapSequence() {
+      const seq = tapSequence
+      tapSequence = null
+      tapResolveTimer = null
+      if (!seq || isBusy() || measureModeRef.current) return
+      if (seq.count === 2) setPinAt(seq.latlng, seq.pointerType)
+      else if (seq.count >= 3) markGridCellAt(seq.latlng)
+    }
+
+    function registerTap(x: number, y: number, latlng: Leaflet.LatLng, pointerType: string) {
+      const continuesSequence =
+        !!tapSequence && Math.hypot(x - tapSequence.x, y - tapSequence.y) <= CADASTRAL_LONG_PRESS_MOVE_TOLERANCE_PX * 2
+      const count = continuesSequence ? tapSequence!.count + 1 : 1
+      if (tapResolveTimer) clearTimeout(tapResolveTimer)
+      tapSequence = { x, y, latlng, pointerType, count }
+      if (count >= GRID_ACTIVATION_CLICK_COUNT) {
+        resolveTapSequence()
+        return
+      }
+      tapResolveTimer = setTimeout(resolveTapSequence, GRID_MULTI_CLICK_MAX_GAP_MS)
     }
 
     function handlePointerDown(domEvent: PointerEvent) {
       if (domEvent.button !== 0) return
+      lastPointerTypeRef.current = domEvent.pointerType
       const target = domEvent.target as Element | null
-      // Bemærk: gitterfelter er bevidst IKKE undtaget her - de dækker hele
-      // viewporten når gitteret er tændt, så matrikelinfo skal kunne vises
-      // oven på dem ligesom alle andre steder.
       if (target?.closest('.leaflet-marker-icon, .leaflet-control, button, a')) return
-      if (pendingCenter || newPinCoords || selectedPin) return
+      if (isBusy() || measureModeRef.current) return
+
       const latlng = map!.mouseEventToLatLng(domEvent as unknown as MouseEvent)
-      start = { x: domEvent.clientX, y: domEvent.clientY, latlng }
-      timer = setTimeout(() => {
-        if (!start) return
-        void loadCadastralParcelInfo({ latlng: start.latlng } as Leaflet.LeafletMouseEvent)
-        start = null
+      press = { x: domEvent.clientX, y: domEvent.clientY, latlng, pointerType: domEvent.pointerType, longPressFired: false }
+      longPressTimer = setTimeout(() => {
+        if (!press || !cadastralEnabledRef.current) return
+        press.longPressFired = true
+        clearTapSequence()
+        void loadCadastralParcelInfo({ latlng: press.latlng } as Leaflet.LeafletMouseEvent)
       }, CADASTRAL_LONG_PRESS_MS)
     }
 
     function handlePointerMove(domEvent: PointerEvent) {
-      if (!start) return
-      const dx = domEvent.clientX - start.x
-      const dy = domEvent.clientY - start.y
-      if (Math.hypot(dx, dy) > CADASTRAL_LONG_PRESS_MOVE_TOLERANCE_PX) cancelPress()
+      if (!press) return
+      const dx = domEvent.clientX - press.x
+      const dy = domEvent.clientY - press.y
+      if (Math.hypot(dx, dy) > CADASTRAL_LONG_PRESS_MOVE_TOLERANCE_PX) {
+        clearLongPress()
+        press = null
+      }
+    }
+
+    function handlePointerUp() {
+      clearLongPress()
+      if (!press || press.longPressFired) {
+        press = null
+        return
+      }
+      const { x, y, latlng, pointerType } = press
+      press = null
+      registerTap(x, y, latlng, pointerType)
+    }
+
+    function handlePointerCancel() {
+      clearLongPress()
+      press = null
     }
 
     containerEl.addEventListener('pointerdown', handlePointerDown)
     containerEl.addEventListener('pointermove', handlePointerMove)
-    containerEl.addEventListener('pointerup', cancelPress)
-    containerEl.addEventListener('pointercancel', cancelPress)
+    containerEl.addEventListener('pointerup', handlePointerUp)
+    containerEl.addEventListener('pointercancel', handlePointerCancel)
     return () => {
-      cancelPress()
+      clearLongPress()
+      clearTapSequence()
       containerEl.removeEventListener('pointerdown', handlePointerDown)
       containerEl.removeEventListener('pointermove', handlePointerMove)
-      containerEl.removeEventListener('pointerup', cancelPress)
-      containerEl.removeEventListener('pointercancel', cancelPress)
+      containerEl.removeEventListener('pointerup', handlePointerUp)
+      containerEl.removeEventListener('pointercancel', handlePointerCancel)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cadastralEnabled, mapReady, pendingCenter, newPinCoords, selectedPin])
+  }, [mapReady, readOnly])
 
   useEffect(() => {
     const map = mapRef.current

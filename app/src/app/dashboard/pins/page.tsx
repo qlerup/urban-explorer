@@ -29,7 +29,7 @@ export default async function PinsPage() {
           <p className="text-sm text-gray-500 mt-0.5">{pins.length} gemte {pins.length === 1 ? 'sted' : 'steder'}</p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <KmzImport categories={[...categories, ...sharedCategories]} initialCandidates={importCandidates} />
+          <KmzImport />
           {pins.length > 0 && (
             <a href="/api/export" download className="btn-secondary text-xs py-2 px-3 shrink-0">
               ⬇️ Eksportér KMZ
@@ -37,7 +37,12 @@ export default async function PinsPage() {
           )}
         </div>
       </div>
-      <PinsList initialPins={pins} categories={[...categories, ...sharedCategories]} maptilerKey={maptilerKey} />
+      <PinsList
+        initialPins={pins}
+        categories={[...categories, ...sharedCategories]}
+        maptilerKey={maptilerKey}
+        initialImportCandidates={importCandidates}
+      />
     </main>
   )
 }

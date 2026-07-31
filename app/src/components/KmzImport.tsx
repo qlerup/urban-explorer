@@ -1,11 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import JSZip from 'jszip'
-import type { Category } from '@/types/pin'
-import type { ImportCandidate } from '@/lib/importCandidates'
-import PinModal from './PinModal'
 
 interface ParsedPlacemark {
   name: string
@@ -57,18 +54,11 @@ async function readImportFile(file: File): Promise<ParsedPlacemark[]> {
   return groups.flat()
 }
 
-export default function KmzImport({ categories, initialCandidates }: { categories: Category[]; initialCandidates: ImportCandidate[] }) {
+export default function KmzImport() {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [candidates, setCandidates] = useState<ImportCandidate[]>(initialCandidates)
-  const [listOpen, setListOpen] = useState(false)
-  const [openId, setOpenId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setCandidates(initialCandidates)
-  }, [initialCandidates])
 
   async function selectFiles(files: FileList | null) {
     if (!files?.length) return
@@ -85,7 +75,6 @@ export default function KmzImport({ categories, initialCandidates }: { categorie
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Filen kunne ikke importeres')
-      setListOpen(true)
       router.refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Filen kunne ikke læses')
@@ -95,92 +84,13 @@ export default function KmzImport({ categories, initialCandidates }: { categorie
     }
   }
 
-  async function removeCandidate(id: string) {
-    setCandidates(previous => previous.filter(item => item.id !== id))
-    await fetch(`/api/import-candidates/${id}`, { method: 'DELETE' })
-    router.refresh()
-  }
-
-  const draft = candidates.find(item => item.id === openId) ?? null
-
   return (
     <>
       <input ref={inputRef} type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" multiple className="hidden" onChange={event => void selectFiles(event.target.files)} />
-      <button
-        type="button"
-        className="btn-secondary text-xs py-2 px-3 shrink-0"
-        onClick={() => (candidates.length > 0 ? setListOpen(true) : inputRef.current?.click())}
-        disabled={loading}
-      >
-        {loading ? 'Læser…' : candidates.length > 0 ? `⬆️ Import (${candidates.length} afventer)` : '⬆️ Importér KMZ'}
+      <button type="button" className="btn-secondary text-xs py-2 px-3 shrink-0" onClick={() => inputRef.current?.click()} disabled={loading}>
+        {loading ? 'Læser…' : '⬆️ Importér KMZ'}
       </button>
       {error && <p className="fixed right-4 top-20 z-[2200] max-w-sm rounded-xl border border-red-800/60 bg-red-950 px-4 py-3 text-sm text-red-200 shadow-xl">{error}</p>}
-
-      {listOpen && !draft && (
-        <div className="ue-modal-backdrop fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/60" onClick={() => setListOpen(false)}>
-          <div
-            className="ue-modal-panel w-full md:max-w-md bg-void-900 md:rounded-2xl rounded-t-2xl border border-void-700 max-h-[85vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-void-700 sticky top-0 bg-void-900">
-              <div className="min-w-0">
-                <h2 className="font-semibold text-gray-100 truncate">KMZ-import</h2>
-                <p className="text-xs text-gray-500">{candidates.length} afventer</p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <button type="button" onClick={() => inputRef.current?.click()} className="text-xs text-rust-400 hover:text-rust-300">
-                  + Tilføj filer
-                </button>
-                <button onClick={() => setListOpen(false)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none px-1">×</button>
-              </div>
-            </div>
-            <div>
-              {candidates.length === 0 && (
-                <p className="px-5 py-8 text-center text-sm text-gray-500">Ingen pins afventer import.</p>
-              )}
-              {candidates.map(item => (
-                <div key={item.id} className="flex items-center gap-2 px-5 py-3 border-b border-void-800">
-                  <button
-                    type="button"
-                    onClick={() => setOpenId(item.id)}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <p className="text-sm font-medium text-gray-200 truncate">{item.name}</p>
-                    <p className="font-mono text-xs text-gray-500">{item.lat.toFixed(6)}, {item.lng.toFixed(6)}</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void removeCandidate(item.id)}
-                    className="text-xs text-gray-400 hover:text-red-300 shrink-0"
-                  >
-                    Fjern
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {draft && (
-        <PinModal
-          key={draft.id}
-          coords={{ lat: draft.lat, lng: draft.lng }}
-          pin={null}
-          categories={categories}
-          initialValues={{ name: draft.name, description: draft.description }}
-          createTitle={draft.name}
-          onClose={() => setOpenId(null)}
-          onCreated={() => {
-            const id = draft.id
-            setCandidates(previous => previous.filter(item => item.id !== id))
-            setOpenId(null)
-            void fetch(`/api/import-candidates/${id}`, { method: 'DELETE' }).then(() => router.refresh())
-          }}
-          onUpdated={() => {}}
-          onDeleted={() => {}}
-        />
-      )}
     </>
   )
 }

@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import type { Category, Pin, PinStatus } from '@/types/pin'
 import { getCustomPinIcon } from '@/types/pin'
+import type { ImportCandidate } from '@/lib/importCandidates'
 import PinIcon from './PinIcon'
 import { PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS } from '@/types/pin'
 import PinModal from './PinModal'
@@ -44,16 +45,32 @@ export default function PinsList({
   maptilerKey,
   readOnly,
   kortHref = '/dashboard/kort',
+  initialImportCandidates = [],
 }: {
   initialPins: Pin[]
   categories: Category[]
   maptilerKey: string | null
   readOnly?: boolean
   kortHref?: string
+  initialImportCandidates?: ImportCandidate[]
 }) {
   const [pins, setPins] = useState(initialPins)
   const [editingPin, setEditingPin] = useState<Pin | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [candidates, setCandidates] = useState<ImportCandidate[]>(initialImportCandidates)
+  const [candidatesCollapsed, setCandidatesCollapsed] = useState(false)
+  const [openCandidateId, setOpenCandidateId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setCandidates(initialImportCandidates)
+  }, [initialImportCandidates])
+
+  async function removeCandidate(id: string) {
+    setCandidates(prev => prev.filter(c => c.id !== id))
+    await fetch(`/api/import-candidates/${id}`, { method: 'DELETE' })
+  }
+
+  const openCandidate = candidates.find(c => c.id === openCandidateId) ?? null
   const [activeCategoryIds, setActiveCategoryIds] = useState<Set<string>>(
     () => new Set([
       ...categories.map(c => c.id),
@@ -169,7 +186,7 @@ export default function PinsList({
     })
   }, [filteredPins, activeCategoryIds])
 
-  if (pins.length === 0) {
+  if (pins.length === 0 && candidates.length === 0) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-500">
         <p className="text-4xl mb-3">📍</p>
@@ -295,8 +312,50 @@ export default function PinsList({
         </div>
       </div>
 
+      {!readOnly && candidates.length > 0 && (
+        <div className="card !p-0 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setCandidatesCollapsed(prev => !prev)}
+            className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-void-800/60"
+            aria-expanded={!candidatesCollapsed}
+          >
+            <span className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-sm font-semibold bg-rust-600/20 text-rust-400">
+              ⬆️
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-gray-200 truncate">Afventer import</span>
+              <span className="block text-xs text-gray-500">
+                {candidates.length} {candidates.length === 1 ? 'pin' : 'pins'} fra KMZ-import
+              </span>
+            </span>
+            <span className="text-lg leading-none text-gray-500" aria-hidden="true">
+              {candidatesCollapsed ? '+' : '-'}
+            </span>
+          </button>
+
+          {!candidatesCollapsed && candidates.map(item => (
+            <div key={item.id} className="flex items-center gap-2 px-4 py-3 border-t border-void-700">
+              <button type="button" onClick={() => setOpenCandidateId(item.id)} className="min-w-0 flex-1 text-left">
+                <p className="text-sm font-medium text-gray-200 truncate">{item.name}</p>
+                <p className="font-mono text-xs text-gray-500">{item.lat.toFixed(6)}, {item.lng.toFixed(6)}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => void removeCandidate(item.id)}
+                className="text-xs text-gray-400 hover:text-red-300 shrink-0"
+              >
+                Fjern
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {filteredPins.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-10">Ingen pins matcher de valgte filtre.</p>
+        <p className="text-sm text-gray-500 text-center py-10">
+          {pins.length === 0 ? 'Ingen gemte pins endnu.' : 'Ingen pins matcher de valgte filtre.'}
+        </p>
       ) : (
         groups.map(group => {
           const groupId = group.id
@@ -446,6 +505,26 @@ export default function PinsList({
             setEditingPin(null)
           }}
           readOnly={readOnly || editingPin.canEdit === false}
+        />
+      )}
+
+      {openCandidate && (
+        <PinModal
+          key={openCandidate.id}
+          coords={{ lat: openCandidate.lat, lng: openCandidate.lng }}
+          pin={null}
+          categories={categories}
+          initialValues={{ name: openCandidate.name, description: openCandidate.description }}
+          createTitle={openCandidate.name}
+          onClose={() => setOpenCandidateId(null)}
+          onCreated={pin => {
+            setPins(prev => [...prev, pin])
+            setCandidates(prev => prev.filter(c => c.id !== openCandidate.id))
+            setOpenCandidateId(null)
+            void fetch(`/api/import-candidates/${openCandidate.id}`, { method: 'DELETE' })
+          }}
+          onUpdated={() => {}}
+          onDeleted={() => {}}
         />
       )}
     </div>
