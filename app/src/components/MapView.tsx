@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import type * as Leaflet from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import type { Category, Pin, PinRoute, PinStatus, RoutePoint, SharedWorkspace } from '@/types/pin'
 import { PIN_STATUSES, PIN_STATUS_LABELS, PIN_STATUS_COLORS } from '@/types/pin'
 import PinModal from './PinModal'
@@ -293,6 +295,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   const mapRef = useRef<Leaflet.Map | null>(null)
   const leafletRef = useRef<typeof Leaflet | null>(null)
   const markersRef = useRef<globalThis.Map<string, Leaflet.Marker>>(new globalThis.Map())
+  const markerClusterGroupRef = useRef<Leaflet.MarkerClusterGroup | null>(null)
   const baseLayerRef = useRef<Leaflet.TileLayer | null>(null)
   const searchMarkerRef = useRef<Leaflet.CircleMarker | null>(null)
   const locateMarkerRef = useRef<Leaflet.Marker | null>(null)
@@ -722,7 +725,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     if (!containerRef.current || mapRef.current) return
     let cancelled = false
 
-    import('leaflet').then(leafletModule => {
+    Promise.all([import('leaflet'), import('leaflet.markercluster')]).then(([leafletModule]) => {
       if (cancelled || !containerRef.current || mapRef.current) return
       const L = (leafletModule as unknown as { default?: typeof Leaflet }).default ?? (leafletModule as unknown as typeof Leaflet)
       leafletRef.current = L
@@ -757,6 +760,27 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
       }).addTo(map)
 
       L.control.zoom({ position: 'topright' }).addTo(map)
+
+      function clusterIconSize(count: number): { size: number; fontSize: number } {
+        if (count < 10) return { size: 40, fontSize: 14 }
+        if (count < 50) return { size: 48, fontSize: 15 }
+        return { size: 56, fontSize: 16 }
+      }
+
+      markerClusterGroupRef.current = L.markerClusterGroup({
+        maxClusterRadius: 60,
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        iconCreateFunction: cluster => {
+          const count = cluster.getChildCount()
+          const { size, fontSize } = clusterIconSize(count)
+          return L.divIcon({
+            html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:#c96f22;border:3px solid #0d1117;box-shadow:0 3px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:${fontSize}px;">${count}</div>`,
+            className: '',
+            iconSize: [size, size],
+          })
+        },
+      }).addTo(map)
 
       const LocateControl = L.Control.extend({
         onAdd: () => {
@@ -822,6 +846,8 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
       }
       baseLayerRef.current?.remove()
       baseLayerRef.current = null
+      markerClusterGroupRef.current?.remove()
+      markerClusterGroupRef.current = null
       searchMarkerRef.current?.remove()
       searchMarkerRef.current = null
       locateMarkerRef.current?.remove()
@@ -1208,13 +1234,14 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   useEffect(() => {
     const map = mapRef.current
     const L = leafletRef.current
-    if (!map || !L || !mapReady) return
+    const clusterGroup = markerClusterGroupRef.current
+    if (!map || !L || !clusterGroup || !mapReady) return
 
     const currentIds = new Set(visiblePins.map(p => p.id))
 
     for (const [id, marker] of markersRef.current) {
       if (!currentIds.has(id)) {
-        marker.remove()
+        clusterGroup.removeLayer(marker)
         markersRef.current.delete(id)
       }
     }
@@ -1258,10 +1285,15 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         existing.on('click', () => handleMarkerClick(pin))
         continue
       }
-      const marker = L.marker([pin.latitude, pin.longitude], { icon: buildIcon(pin) }).addTo(map)
+      const marker = L.marker([pin.latitude, pin.longitude], { icon: buildIcon(pin) })
       marker.on('click', () => handleMarkerClick(pin))
+      clusterGroup.addLayer(marker)
       markersRef.current.set(pin.id, marker)
     }
+
+    // Tvinger klyngerne til at genberegne, hvis en eksisterende markørs position
+    // eller ikon er opdateret (fx efter en gemt rute eller skiftet pin-ikon).
+    clusterGroup.refreshClusters()
   }, [visiblePins, mapReady])
 
   // Deles mellem desktop-panelet og mobil-sheetet. Chips og knapper er større

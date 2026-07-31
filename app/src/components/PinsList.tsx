@@ -324,7 +324,7 @@ export default function PinsList({
               ⬆️
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-gray-200 truncate">Afventer import</span>
+              <span className="block text-sm font-semibold text-gray-200 truncate">Afventer gennemgang</span>
               <span className="block text-xs text-gray-500">
                 {candidates.length} {candidates.length === 1 ? 'pin' : 'pins'} fra KMZ-import
               </span>
