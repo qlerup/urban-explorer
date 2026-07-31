@@ -21,6 +21,14 @@ interface Props {
   readOnly?: boolean
   createOwnerId?: string
   allowUncategorized?: boolean
+  initialValues?: {
+    name?: string
+    description?: string
+    rating?: number
+    status?: PinStatus
+    icon?: string
+  }
+  createTitle?: string
 }
 
 interface StagedImage {
@@ -141,13 +149,13 @@ async function uploadPinImage(pinId: string, file: File, onProgress: (percent: n
   }
 }
 
-export default function PinModal({ coords, pin, categories, onClose, onCreated, onUpdated, onDeleted, visibleRouteId, onToggleRoute, onEditRoute, readOnly, createOwnerId, allowUncategorized = true }: Props) {
+export default function PinModal({ coords, pin, categories, onClose, onCreated, onUpdated, onDeleted, visibleRouteId, onToggleRoute, onEditRoute, readOnly, createOwnerId, allowUncategorized = true, initialValues, createTitle }: Props) {
   const [currentPin, setCurrentPin] = useState<Pin | null>(pin)
-  const [name, setName] = useState(pin?.name ?? '')
-  const [description, setDescription] = useState(pin?.description ?? '')
-  const [rating, setRating] = useState(pin?.rating ?? 0)
-  const [status, setStatus] = useState<PinStatus>(pin?.status ?? 'vil_se')
-  const [icon, setIcon] = useState<string>(pin?.icon ?? PIN_ICON_OPTIONS[0])
+  const [name, setName] = useState(pin?.name ?? initialValues?.name ?? '')
+  const [description, setDescription] = useState(pin?.description ?? initialValues?.description ?? '')
+  const [rating, setRating] = useState(pin?.rating ?? initialValues?.rating ?? 0)
+  const [status, setStatus] = useState<PinStatus>(pin?.status ?? initialValues?.status ?? 'vil_se')
+  const [icon, setIcon] = useState<string>(pin?.icon ?? initialValues?.icon ?? PIN_ICON_OPTIONS[0])
   const [categoryIds, setCategoryIds] = useState<string[]>(
     () => pin?.categories?.map(category => category.id) ?? (pin?.category ? [pin.category.id] : [])
   )
@@ -469,7 +477,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-void-700 sticky top-0 bg-void-900">
-          <h2 className="font-semibold text-gray-100 truncate">{isCreateMode ? 'Ny pin' : currentPin?.name || 'Pin'}</h2>
+          <h2 className="font-semibold text-gray-100 truncate">{isCreateMode ? (createTitle || 'Ny pin') : currentPin?.name || 'Pin'}</h2>
           <button onClick={handleClose} className="text-gray-400 hover:text-gray-200 text-2xl leading-none px-1">×</button>
         </div>
 
