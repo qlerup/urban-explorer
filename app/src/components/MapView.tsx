@@ -763,11 +763,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
 
       L.control.zoom({ position: 'topright' }).addTo(map)
 
-      function clusterIconSize(count: number): { size: number; fontSize: number } {
-        if (count < 10) return { size: 40, fontSize: 14 }
-        if (count < 50) return { size: 48, fontSize: 15 }
-        return { size: 56, fontSize: 16 }
-      }
+      const CLUSTER_ICON_SIZE = 57
 
       markerClusterGroupRef.current = L.markerClusterGroup({
         maxClusterRadius: 60,
@@ -775,11 +771,12 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         showCoverageOnHover: false,
         iconCreateFunction: cluster => {
           const count = cluster.getChildCount()
-          const { size, fontSize } = clusterIconSize(count)
+          const fontSize = count < 100 ? 20 : 17
           return L.divIcon({
-            html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:#c96f22;border:3px solid #0d1117;box-shadow:0 3px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:${fontSize}px;">${count}</div>`,
+            html: `<div style="box-sizing:border-box;width:${CLUSTER_ICON_SIZE}px;height:${CLUSTER_ICON_SIZE}px;border-radius:50%;background:#c96f22;border:4px solid black;box-shadow:0 3px 6px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:${fontSize}px;">${count}</div>`,
             className: '',
-            iconSize: [size, size],
+            iconSize: [CLUSTER_ICON_SIZE, CLUSTER_ICON_SIZE],
+            iconAnchor: [CLUSTER_ICON_SIZE / 2, CLUSTER_ICON_SIZE / 2],
           })
         },
       }).addTo(map)
