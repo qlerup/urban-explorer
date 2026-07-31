@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { getPinsForUser } from '@/lib/pins'
 import { getCategoriesForUser, getCategoriesSharedWithUser } from '@/lib/categories'
 import { getMaptilerKey } from '@/lib/settings'
+import { getImportCandidatesForUser } from '@/lib/importCandidates'
 import PinsList from '@/components/PinsList'
 import KmzImport from '@/components/KmzImport'
 
@@ -12,11 +13,12 @@ export default async function PinsPage() {
   const session = await getSession()
   if (!session) redirect('/login')
 
-  const [pins, categories, sharedCategories, maptilerKey] = await Promise.all([
+  const [pins, categories, sharedCategories, maptilerKey, importCandidates] = await Promise.all([
     getPinsForUser(session.userId),
     getCategoriesForUser(session.userId),
     getCategoriesSharedWithUser(session.userId),
     getMaptilerKey(),
+    getImportCandidatesForUser(session.userId),
   ])
 
   return (
@@ -27,7 +29,7 @@ export default async function PinsPage() {
           <p className="text-sm text-gray-500 mt-0.5">{pins.length} gemte {pins.length === 1 ? 'sted' : 'steder'}</p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <KmzImport categories={[...categories, ...sharedCategories]} />
+          <KmzImport categories={[...categories, ...sharedCategories]} initialCandidates={importCandidates} />
           {pins.length > 0 && (
             <a href="/api/export" download className="btn-secondary text-xs py-2 px-3 shrink-0">
               ⬇️ Eksportér KMZ

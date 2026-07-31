@@ -1,21 +1,17 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import JSZip from 'jszip'
-import { PIN_ICON_OPTIONS, type Category, type PinStatus } from '@/types/pin'
+import type { Category } from '@/types/pin'
+import type { ImportCandidate } from '@/lib/importCandidates'
 import PinModal from './PinModal'
 
-interface ImportedPin {
-  id: string
-  source: string
+interface ParsedPlacemark {
   name: string
   description: string
   lat: number
   lng: number
-  rating: number
-  status: PinStatus
-  icon: string
 }
 
 function plainDescription(mark: Element): string {
@@ -29,7 +25,7 @@ function plainDescription(mark: Element): string {
   return Array.from(new Set(text.split('\n').map(line => line.trim()).filter(Boolean))).join('\n').slice(0, 2000)
 }
 
-function parseKml(kml: string, source: string): ImportedPin[] {
+function parseKml(kml: string, source: string): ParsedPlacemark[] {
   const document = new DOMParser().parseFromString(kml, 'application/xml')
   if (document.querySelector('parsererror')) throw new Error(`${source}: KML-filen er ugyldig`)
 
@@ -43,20 +39,15 @@ function parseKml(kml: string, source: string): ImportedPin[] {
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return []
     const importedName = Array.from(mark.children).find(child => child.localName === 'name')?.textContent?.trim()
     return [{
-      id: `${source}-${index}-${lat}-${lng}`,
-      source,
       name: (importedName || `Importeret pin ${index + 1}`).slice(0, 200),
       description: plainDescription(mark),
       lat,
       lng,
-      rating: 0,
-      status: 'vil_se' as PinStatus,
-      icon: PIN_ICON_OPTIONS[0],
     }]
   })
 }
 
-async function readImportFile(file: File): Promise<ImportedPin[]> {
+async function readImportFile(file: File): Promise<ParsedPlacemark[]> {
   if (file.size > 25 * 1024 * 1024) throw new Error(`${file.name}: Filen må højst fylde 25 MB`)
   if (file.name.toLowerCase().endsWith('.kml')) return parseKml(await file.text(), file.name)
   const zip = await JSZip.loadAsync(file)
@@ -66,34 +57,36 @@ async function readImportFile(file: File): Promise<ImportedPin[]> {
   return groups.flat()
 }
 
-export default function KmzImport({ categories }: { categories: Category[] }) {
+export default function KmzImport({ categories, initialCandidates }: { categories: Category[]; initialCandidates: ImportCandidate[] }) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [queue, setQueue] = useState<ImportedPin[]>([])
+  const [candidates, setCandidates] = useState<ImportCandidate[]>(initialCandidates)
+  const [listOpen, setListOpen] = useState(false)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [saved, setSaved] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  function closeList() {
-    if (queue.length > 0 && !confirm('Luk importen? De resterende pins bliver ikke importeret.')) return
-    setQueue([])
-    setOpenId(null)
-    if (saved > 0) router.refresh()
-    setSaved(0)
-  }
+  useEffect(() => {
+    setCandidates(initialCandidates)
+  }, [initialCandidates])
 
   async function selectFiles(files: FileList | null) {
     if (!files?.length) return
     setLoading(true)
     setError(null)
     try {
-      const results = (await Promise.all(Array.from(files).map(readImportFile))).flat()
-      if (results.length === 0) throw new Error('Der blev ikke fundet nogen punkt-pins i filerne')
-      if (results.length > 2000) throw new Error('Der kan højst importeres 2.000 pins ad gangen')
-      setQueue(results)
-      setOpenId(null)
-      setSaved(0)
+      const parsed = (await Promise.all(Array.from(files).map(readImportFile))).flat()
+      if (parsed.length === 0) throw new Error('Der blev ikke fundet nogen punkt-pins i filerne')
+      if (parsed.length > 2000) throw new Error('Der kan højst importeres 2.000 pins ad gangen')
+      const res = await fetch('/api/import-candidates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: parsed }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Filen kunne ikke importeres')
+      setListOpen(true)
+      router.refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Filen kunne ikke læses')
     } finally {
@@ -102,22 +95,29 @@ export default function KmzImport({ categories }: { categories: Category[] }) {
     }
   }
 
-  function removeFromQueue(id: string) {
-    setQueue(previous => previous.filter(item => item.id !== id))
+  async function removeCandidate(id: string) {
+    setCandidates(previous => previous.filter(item => item.id !== id))
+    await fetch(`/api/import-candidates/${id}`, { method: 'DELETE' })
+    router.refresh()
   }
 
-  const draft = queue.find(item => item.id === openId) ?? null
+  const draft = candidates.find(item => item.id === openId) ?? null
 
   return (
     <>
       <input ref={inputRef} type="file" accept=".kmz,.kml,application/vnd.google-earth.kmz,application/vnd.google-earth.kml+xml" multiple className="hidden" onChange={event => void selectFiles(event.target.files)} />
-      <button type="button" className="btn-primary text-xs py-2 px-3 shrink-0" onClick={() => inputRef.current?.click()} disabled={loading}>
-        {loading ? 'Læser…' : '⬆️ Importér KMZ'}
+      <button
+        type="button"
+        className="btn-secondary text-xs py-2 px-3 shrink-0"
+        onClick={() => (candidates.length > 0 ? setListOpen(true) : inputRef.current?.click())}
+        disabled={loading}
+      >
+        {loading ? 'Læser…' : candidates.length > 0 ? `⬆️ Import (${candidates.length} afventer)` : '⬆️ Importér KMZ'}
       </button>
       {error && <p className="fixed right-4 top-20 z-[2200] max-w-sm rounded-xl border border-red-800/60 bg-red-950 px-4 py-3 text-sm text-red-200 shadow-xl">{error}</p>}
 
-      {queue.length > 0 && !draft && (
-        <div className="ue-modal-backdrop fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/60" onClick={closeList}>
+      {listOpen && !draft && (
+        <div className="ue-modal-backdrop fixed inset-0 z-[2000] flex items-end md:items-center justify-center bg-black/60" onClick={() => setListOpen(false)}>
           <div
             className="ue-modal-panel w-full md:max-w-md bg-void-900 md:rounded-2xl rounded-t-2xl border border-void-700 max-h-[85vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
@@ -125,12 +125,20 @@ export default function KmzImport({ categories }: { categories: Category[] }) {
             <div className="flex items-center justify-between px-5 py-4 border-b border-void-700 sticky top-0 bg-void-900">
               <div className="min-w-0">
                 <h2 className="font-semibold text-gray-100 truncate">KMZ-import</h2>
-                <p className="text-xs text-gray-500">{queue.length} tilbage · {saved} gemt</p>
+                <p className="text-xs text-gray-500">{candidates.length} afventer</p>
               </div>
-              <button onClick={closeList} className="text-gray-400 hover:text-gray-200 text-2xl leading-none px-1">×</button>
+              <div className="flex items-center gap-3 shrink-0">
+                <button type="button" onClick={() => inputRef.current?.click()} className="text-xs text-rust-400 hover:text-rust-300">
+                  + Tilføj filer
+                </button>
+                <button onClick={() => setListOpen(false)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none px-1">×</button>
+              </div>
             </div>
             <div>
-              {queue.map(item => (
+              {candidates.length === 0 && (
+                <p className="px-5 py-8 text-center text-sm text-gray-500">Ingen pins afventer import.</p>
+              )}
+              {candidates.map(item => (
                 <div key={item.id} className="flex items-center gap-2 px-5 py-3 border-b border-void-800">
                   <button
                     type="button"
@@ -142,7 +150,7 @@ export default function KmzImport({ categories }: { categories: Category[] }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => removeFromQueue(item.id)}
+                    onClick={() => void removeCandidate(item.id)}
                     className="text-xs text-gray-400 hover:text-red-300 shrink-0"
                   >
                     Fjern
@@ -160,14 +168,14 @@ export default function KmzImport({ categories }: { categories: Category[] }) {
           coords={{ lat: draft.lat, lng: draft.lng }}
           pin={null}
           categories={categories}
-          initialValues={draft}
+          initialValues={{ name: draft.name, description: draft.description }}
           createTitle={draft.name}
           onClose={() => setOpenId(null)}
           onCreated={() => {
-            setSaved(value => value + 1)
-            setQueue(previous => previous.filter(item => item.id !== draft.id))
+            const id = draft.id
+            setCandidates(previous => previous.filter(item => item.id !== id))
             setOpenId(null)
-            router.refresh()
+            void fetch(`/api/import-candidates/${id}`, { method: 'DELETE' }).then(() => router.refresh())
           }}
           onUpdated={() => {}}
           onDeleted={() => {}}

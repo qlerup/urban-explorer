@@ -829,10 +829,9 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         containerEl.addEventListener('pointerdown', handlePointerDown)
 
         const handleNativeDblClick = (domEvent: MouseEvent) => {
-          if ((domEvent.target as Element | null)?.closest?.('.ue-grid-cell')) {
-            domEvent.preventDefault()
-            return
-          }
+          // Sætter pin uanset om der klikkes oven på et gittterfelt - gitterfelter
+          // dækker hele viewporten når gitteret er slået til, så uden dette ville
+          // dobbelt-tryk aldrig kunne sætte en pin med gitter tændt.
           domEvent.preventDefault()
           if (!workspaceCanEditRef.current) return
           const latlng = map.mouseEventToLatLng(domEvent)
@@ -1143,7 +1142,10 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     function handlePointerDown(domEvent: PointerEvent) {
       if (domEvent.button !== 0) return
       const target = domEvent.target as Element | null
-      if (target?.closest('.leaflet-marker-icon, .ue-grid-cell, .leaflet-control, button, a')) return
+      // Bemærk: gitterfelter er bevidst IKKE undtaget her - de dækker hele
+      // viewporten når gitteret er tændt, så matrikelinfo skal kunne vises
+      // oven på dem ligesom alle andre steder.
+      if (target?.closest('.leaflet-marker-icon, .leaflet-control, button, a')) return
       if (pendingCenter || newPinCoords || selectedPin) return
       const latlng = map!.mouseEventToLatLng(domEvent as unknown as MouseEvent)
       start = { x: domEvent.clientX, y: domEvent.clientY, latlng }

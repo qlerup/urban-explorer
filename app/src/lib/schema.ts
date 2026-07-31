@@ -217,6 +217,21 @@ CREATE TABLE IF NOT EXISTS pin_shares (
 
 CREATE INDEX IF NOT EXISTS idx_pin_shares_shared_with ON pin_shares(shared_with_id);
 CREATE INDEX IF NOT EXISTS idx_pin_shares_pin_id ON pin_shares(pin_id);
+
+-- Pins parset fra en KMZ/KML-import, som endnu ikke er gennemgået og gemt som
+-- en rigtig pin. Ligger i databasen (i stedet for kun i browserens hukommelse),
+-- så man kan gennemgå nogle stykker i dag og resten en anden dag.
+CREATE TABLE IF NOT EXISTS import_candidates (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    latitude    DOUBLE PRECISION NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+    longitude   DOUBLE PRECISION NOT NULL CHECK (longitude BETWEEN -180 AND 180),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_candidates_user_id ON import_candidates(user_id);
 `
 
 export async function ensureSchema(): Promise<void> {
