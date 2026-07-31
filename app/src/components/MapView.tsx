@@ -303,6 +303,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   const workspaceCanEditRef = useRef(true)
   const cadastralEnabledRef = useRef(false)
   const gridEnabledRef = useRef(false)
+  const toggleGridCellRef = useRef<(row: number, col: number) => void>(() => {})
   const pendingCenterRef = useRef<{ purpose: 'new-pin' | 'route-point' } | null>(null)
   const newPinCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
   const selectedPinRef = useRef<Pin | null>(null)
@@ -379,6 +380,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
   pendingCenterRef.current = pendingCenter
   newPinCoordsRef.current = newPinCoords
   selectedPinRef.current = selectedPin
+  toggleGridCellRef.current = toggleGridCell
 
   function toggleCategory(id: string) {
     setActiveCategoryIds(prev => {
@@ -1149,7 +1151,10 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     function markGridCellAt(latlng: Leaflet.LatLng) {
       if (readOnly || !workspaceCanEditRef.current || !gridEnabledRef.current || map!.getZoom() < GRID_MIN_ZOOM) return
       const { row, col } = gridCellForLatLng(latlng.lat, latlng.lng)
-      void toggleGridCell(row, col)
+      // Kalder altid den friskeste toggleGridCell via ref - denne effekt genkører
+      // ikke ved hver searchedCells-ændring, så et direkte kald ville lukke over
+      // en forældet searchedCells og aldrig opdage at et felt allerede er markeret.
+      toggleGridCellRef.current(row, col)
     }
 
     function resolveTapSequence() {
