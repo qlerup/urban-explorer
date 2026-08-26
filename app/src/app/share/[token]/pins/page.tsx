@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getShareScopeByToken } from '@/lib/shares'
 import { getPinsByIds } from '@/lib/pins'
-import { getMaptilerKey } from '@/lib/settings'
+import { getMaptilerKey, getMapProvider } from '@/lib/settings'
 import PinsList from '@/components/PinsList'
 import type { Category } from '@/types/pin'
 
@@ -12,7 +12,11 @@ export default async function SharePinsPage({ params }: { params: Promise<{ toke
   const scope = await getShareScopeByToken(token)
   if (!scope) notFound()
 
-  const [pins, maptilerKey] = await Promise.all([getPinsByIds(scope.userId, scope.pinIds), getMaptilerKey()])
+  const [pins, maptilerKey, mapProvider] = await Promise.all([
+    getPinsByIds(scope.userId, scope.pinIds),
+    getMaptilerKey(),
+    getMapProvider(),
+  ])
 
   const categories: Category[] = Array.from(
     new Map(pins.flatMap(pin => pin.categories.map(category => [category.id, category] as const))).values()
@@ -33,6 +37,7 @@ export default async function SharePinsPage({ params }: { params: Promise<{ toke
         initialPins={sharedPins}
         categories={categories}
         maptilerKey={maptilerKey}
+        mapProvider={mapProvider}
         readOnly
         kortHref={`/share/${token}/kort`}
       />

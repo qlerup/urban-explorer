@@ -50,8 +50,11 @@ type ClipboardCopyState =
   | { status: 'copied'; value: string }
   | { status: 'failed'; value: string }
 
+type MapProvider = 'maptiler' | 'esri'
+
 interface Props {
   maptilerKey: string
+  mapProvider: MapProvider
   initialPins: Pin[]
   categories: Category[]
   sharedWorkspaces?: SharedWorkspace[]
@@ -63,6 +66,7 @@ interface Props {
 const DEFAULT_CENTER: [number, number] = [55.5, 10.4]
 const DEFAULT_ZOOM = 6.5
 const MAP_MAX_NATIVE_ZOOM = 20
+const ESRI_MAX_NATIVE_ZOOM = 19
 const MAP_MAX_ZOOM = 22
 const NO_CATEGORY = '__none__'
 
@@ -94,7 +98,30 @@ const MAP_ATTRIBUTION =
   '&copy; <a href="https://www.maptiler.com/copyright/" target="_blank" rel="noopener noreferrer">MapTiler</a> ' +
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>'
 
-function mapLayerTileUrl(layerId: MapLayerId, maptilerKey: string): string {
+const ESRI_ATTRIBUTION =
+  'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> ' +
+  '&mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+
+const ESRI_HYBRID_LABELS_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
+
+function mapLayerAttribution(provider: MapProvider): string {
+  return provider === 'esri' ? ESRI_ATTRIBUTION : MAP_ATTRIBUTION
+}
+
+function mapLayerMaxNativeZoom(provider: MapProvider): number {
+  return provider === 'esri' ? ESRI_MAX_NATIVE_ZOOM : MAP_MAX_NATIVE_ZOOM
+}
+
+function mapLayerTileUrl(layerId: MapLayerId, provider: MapProvider, maptilerKey: string): string {
+  if (provider === 'esri') {
+    if (layerId === 'outdoor-v4') {
+      return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'
+    }
+    // 'hybrid-v4' bruger samme satellitbund som 'satellite-v4' - vejnavne/steder
+    // lægges ovenpå som et separat, gennemsigtigt overlay-lag (se hybridOverlayRef).
+    return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+  }
   if (layerId === 'hybrid-v4') {
     return `https://api.maptiler.com/maps/hybrid-v4/256/{z}/{x}/{y}.jpg?key=${maptilerKey}`
   }
@@ -112,11 +139,19 @@ function latLngToTile(lat: number, lng: number, zoom: number): MapLayerPreviewTi
   return { x, y, z: zoom }
 }
 
-function mapLayerPreviewUrl(layerId: MapLayerId, maptilerKey: string, tile: MapLayerPreviewTile): string {
-  return mapLayerTileUrl(layerId, maptilerKey)
-    .replace('{z}', String(tile.z))
-    .replace('{x}', String(tile.x))
-    .replace('{y}', String(tile.y))
+function fillTileTemplate(template: string, tile: MapLayerPreviewTile): string {
+  return template.replace('{z}', String(tile.z)).replace('{x}', String(tile.x)).replace('{y}', String(tile.y))
+}
+
+// Returnerer en færdig CSS background-image-værdi (kan være flere komma-separerede
+// url(...) hvis laget (fx hybrid på Esri) er sat sammen af flere lag).
+function mapLayerPreviewUrl(layerId: MapLayerId, provider: MapProvider, maptilerKey: string, tile: MapLayerPreviewTile): string {
+  const baseUrl = fillTileTemplate(mapLayerTileUrl(layerId, provider, maptilerKey), tile)
+  if (provider === 'esri' && layerId === 'hybrid-v4') {
+    const overlayUrl = fillTileTemplate(ESRI_HYBRID_LABELS_URL, tile)
+    return `url("${overlayUrl}"), url("${baseUrl}")`
+  }
+  return `url("${baseUrl}")`
 }
 
 // Modul-niveau i stedet for state, så visningen husker sig selv når man navigerer
@@ -291,13 +326,14 @@ function parseCoordinateSearch(input: string): SearchCoordinates | null {
   return null
 }
 
-export default function MapView({ maptilerKey, initialPins, categories, sharedWorkspaces = [], initialGridCells, focusPinId, readOnly }: Props) {
+export default function MapView({ maptilerKey, mapProvider, initialPins, categories, sharedWorkspaces = [], initialGridCells, focusPinId, readOnly }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<Leaflet.Map | null>(null)
   const leafletRef = useRef<typeof Leaflet | null>(null)
   const markersRef = useRef<globalThis.Map<string, Leaflet.Marker>>(new globalThis.Map())
   const markerClusterGroupRef = useRef<Leaflet.MarkerClusterGroup | null>(null)
   const baseLayerRef = useRef<Leaflet.TileLayer | null>(null)
+  const hybridOverlayRef = useRef<Leaflet.TileLayer | null>(null)
   const searchMarkerRef = useRef<Leaflet.CircleMarker | null>(null)
   const locateMarkerRef = useRef<Leaflet.Marker | null>(null)
   const lastPointerTypeRef = useRef<string>('mouse')
@@ -683,6 +719,31 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
         return
       }
 
+      if (mapProvider === 'esri') {
+        // Ingen MapTiler-nøgle nødvendig i Esri-tilstand - brug OpenStreetMap's gratis Nominatim-søgning i stedet.
+        const nominatimUrl = new URL('https://nominatim.openstreetmap.org/search')
+        nominatimUrl.searchParams.set('q', query)
+        nominatimUrl.searchParams.set('format', 'jsonv2')
+        nominatimUrl.searchParams.set('limit', '1')
+        nominatimUrl.searchParams.set('accept-language', 'da')
+
+        const res = await fetch(nominatimUrl)
+        if (!res.ok) throw new Error('Adresseopslag fejlede')
+
+        const results = (await res.json()) as { lat: string; lon: string; boundingbox?: [string, string, string, string] }[]
+        const result = results[0]
+        if (!result) throw new Error('Ingen resultater')
+
+        const lat = Number(result.lat)
+        const lng = Number(result.lon)
+        const bbox = result.boundingbox
+          ? ([Number(result.boundingbox[2]), Number(result.boundingbox[0]), Number(result.boundingbox[3]), Number(result.boundingbox[1])] as [number, number, number, number])
+          : undefined
+        focusSearchResult(lat, lng, bbox)
+        setSearchError(null)
+        return
+      }
+
       const url = new URL(`https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json`)
       url.searchParams.set('key', maptilerKey)
       url.searchParams.set('limit', '1')
@@ -768,13 +829,22 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
       updateLayerPreview(map)
       setGridZoom(map.getZoom())
 
-      baseLayerRef.current = L.tileLayer(mapLayerTileUrl(mapLayerId, maptilerKey), {
-        attribution: MAP_ATTRIBUTION,
+      baseLayerRef.current = L.tileLayer(mapLayerTileUrl(mapLayerId, mapProvider, maptilerKey), {
+        attribution: mapLayerAttribution(mapProvider),
         tileSize: 256,
-        maxNativeZoom: MAP_MAX_NATIVE_ZOOM,
+        maxNativeZoom: mapLayerMaxNativeZoom(mapProvider),
         maxZoom: MAP_MAX_ZOOM,
         crossOrigin: true,
       }).addTo(map)
+
+      if (mapProvider === 'esri' && mapLayerId === 'hybrid-v4') {
+        hybridOverlayRef.current = L.tileLayer(ESRI_HYBRID_LABELS_URL, {
+          tileSize: 256,
+          maxNativeZoom: ESRI_MAX_NATIVE_ZOOM,
+          maxZoom: MAP_MAX_ZOOM,
+          crossOrigin: true,
+        }).addTo(map)
+      }
 
       L.control.zoom({ position: 'topright' }).addTo(map)
 
@@ -860,6 +930,8 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
       }
       baseLayerRef.current?.remove()
       baseLayerRef.current = null
+      hybridOverlayRef.current?.remove()
+      hybridOverlayRef.current = null
       markerClusterGroupRef.current?.remove()
       markerClusterGroupRef.current = null
       searchMarkerRef.current?.remove()
@@ -874,7 +946,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
       mapRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maptilerKey])
+  }, [maptilerKey, mapProvider])
 
   useEffect(() => {
     measureModeRef.current = measureMode
@@ -886,14 +958,25 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
     if (!map || !L || !mapReady) return
 
     baseLayerRef.current?.remove()
-    baseLayerRef.current = L.tileLayer(mapLayerTileUrl(mapLayerId, maptilerKey), {
-      attribution: MAP_ATTRIBUTION,
+    baseLayerRef.current = L.tileLayer(mapLayerTileUrl(mapLayerId, mapProvider, maptilerKey), {
+      attribution: mapLayerAttribution(mapProvider),
       tileSize: 256,
-      maxNativeZoom: MAP_MAX_NATIVE_ZOOM,
+      maxNativeZoom: mapLayerMaxNativeZoom(mapProvider),
       maxZoom: MAP_MAX_ZOOM,
       crossOrigin: true,
     }).addTo(map)
-  }, [mapLayerId, mapReady, maptilerKey])
+
+    hybridOverlayRef.current?.remove()
+    hybridOverlayRef.current = null
+    if (mapProvider === 'esri' && mapLayerId === 'hybrid-v4') {
+      hybridOverlayRef.current = L.tileLayer(ESRI_HYBRID_LABELS_URL, {
+        tileSize: 256,
+        maxNativeZoom: ESRI_MAX_NATIVE_ZOOM,
+        maxZoom: MAP_MAX_ZOOM,
+        crossOrigin: true,
+      }).addTo(map)
+    }
+  }, [mapLayerId, mapReady, maptilerKey, mapProvider])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1673,7 +1756,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
           onMouseLeave={() => setLayerPickerOpen(false)}
         >
           {(() => {
-            const previewUrl = previewTile ? mapLayerPreviewUrl(selectedMapLayer.id, maptilerKey, previewTile) : null
+            const previewUrl = previewTile ? mapLayerPreviewUrl(selectedMapLayer.id, mapProvider, maptilerKey, previewTile) : null
             return (
               <button
                 type="button"
@@ -1688,7 +1771,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
                   {previewUrl && (
                     <span
                       className="block h-full w-full bg-cover bg-center"
-                      style={{ backgroundImage: `url("${previewUrl}")` }}
+                      style={{ backgroundImage: previewUrl ?? undefined }}
                     />
                   )}
                 </span>
@@ -1710,7 +1793,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
             <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Andre kortlag</p>
             <div className="space-y-1">
               {MAP_LAYERS.filter(layer => layer.id !== mapLayerId).map(layer => {
-                const previewUrl = previewTile ? mapLayerPreviewUrl(layer.id, maptilerKey, previewTile) : null
+                const previewUrl = previewTile ? mapLayerPreviewUrl(layer.id, mapProvider, maptilerKey, previewTile) : null
                 return (
                   <button
                     key={layer.id}
@@ -1723,7 +1806,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
                       {previewUrl && (
                         <span
                           className="block h-full w-full bg-cover bg-center"
-                          style={{ backgroundImage: `url("${previewUrl}")` }}
+                          style={{ backgroundImage: previewUrl ?? undefined }}
                         />
                       )}
                     </span>
@@ -1948,7 +2031,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
             <div className="space-y-1.5 px-5">
               {MAP_LAYERS.map(layer => {
                 const active = layer.id === mapLayerId
-                const layerPreviewUrl = previewTile ? mapLayerPreviewUrl(layer.id, maptilerKey, previewTile) : null
+                const layerPreviewUrl = previewTile ? mapLayerPreviewUrl(layer.id, mapProvider, maptilerKey, previewTile) : null
                 return (
                   <button
                     key={layer.id}
@@ -1963,7 +2046,7 @@ export default function MapView({ maptilerKey, initialPins, categories, sharedWo
                       {layerPreviewUrl && (
                         <span
                           className="block h-full w-full bg-cover bg-center"
-                          style={{ backgroundImage: `url("${layerPreviewUrl}")` }}
+                          style={{ backgroundImage: layerPreviewUrl ?? undefined }}
                         />
                       )}
                     </span>

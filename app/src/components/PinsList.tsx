@@ -33,15 +33,21 @@ function latLngToTile(lat: number, lng: number, zoom: number): { x: number; y: n
   return { x, y, z: zoom }
 }
 
-function tileThumbnailUrl(pin: Pin, maptilerKey: string | null): string | null {
-  if (!maptilerKey) return null
+type MapProvider = 'maptiler' | 'esri'
+
+function tileThumbnailUrl(pin: Pin, mapProvider: MapProvider, maptilerKey: string | null): string | null {
   const { x, y, z } = latLngToTile(pin.latitude, pin.longitude, THUMBNAIL_ZOOM)
+  if (mapProvider === 'esri') {
+    return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`
+  }
+  if (!maptilerKey) return null
   return `https://api.maptiler.com/maps/satellite-v4/256/${z}/${x}/${y}.jpg?key=${maptilerKey}`
 }
 
 export default function PinsList({
   initialPins,
   categories,
+  mapProvider,
   maptilerKey,
   readOnly,
   kortHref = '/dashboard/kort',
@@ -49,6 +55,7 @@ export default function PinsList({
 }: {
   initialPins: Pin[]
   categories: Category[]
+  mapProvider: MapProvider
   maptilerKey: string | null
   readOnly?: boolean
   kortHref?: string
@@ -394,7 +401,7 @@ export default function PinsList({
             </button>
 
             {!isCollapsed && group.pins.map(pin => {
-              const mapUrl = tileThumbnailUrl(pin, maptilerKey)
+              const mapUrl = tileThumbnailUrl(pin, mapProvider, maptilerKey)
               return (
                 <div key={pin.id} className="flex gap-4 px-4 py-3 border-t border-void-700">
                   {mapUrl ? (

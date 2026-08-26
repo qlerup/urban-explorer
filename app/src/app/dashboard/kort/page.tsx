@@ -4,7 +4,7 @@ import { getSession } from '@/lib/auth'
 import { getPinsForUser } from '@/lib/pins'
 import { getCategoriesForUser, getCategoriesSharedWithUser, getSharedWorkspacesForUser } from '@/lib/categories'
 import { getGridCellsForUser } from '@/lib/grid'
-import { getMaptilerKey } from '@/lib/settings'
+import { getMaptilerKey, getMapProvider } from '@/lib/settings'
 import MapView from '@/components/MapView'
 
 export const dynamic = 'force-dynamic'
@@ -15,9 +15,9 @@ export default async function KortPage({ searchParams }: { searchParams: Promise
   const session = await getSession()
   if (!session) redirect('/login')
 
-  const maptilerKey = await getMaptilerKey()
+  const [maptilerKey, mapProvider] = await Promise.all([getMaptilerKey(), getMapProvider()])
 
-  if (!maptilerKey || maptilerKey === PLACEHOLDER_KEY) {
+  if (mapProvider === 'maptiler' && (!maptilerKey || maptilerKey === PLACEHOLDER_KEY)) {
     return (
       <div className="p-6 text-center text-gray-400 max-w-sm mx-auto pt-16">
         <p className="text-3xl mb-3">🗺️</p>
@@ -45,7 +45,8 @@ export default async function KortPage({ searchParams }: { searchParams: Promise
 
   return (
     <MapView
-      maptilerKey={maptilerKey}
+      maptilerKey={maptilerKey ?? ''}
+      mapProvider={mapProvider}
       initialPins={pins}
       categories={[...categories, ...sharedCategories]}
       sharedWorkspaces={sharedWorkspaces}

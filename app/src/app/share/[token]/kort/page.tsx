@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getShareScopeByToken } from '@/lib/shares'
 import { getPinsByIds } from '@/lib/pins'
-import { getMaptilerKey } from '@/lib/settings'
+import { getMaptilerKey, getMapProvider } from '@/lib/settings'
 import MapView from '@/components/MapView'
 import type { Category } from '@/types/pin'
 
@@ -20,9 +20,9 @@ export default async function ShareKortPage({
   const scope = await getShareScopeByToken(token)
   if (!scope) notFound()
 
-  const maptilerKey = await getMaptilerKey()
+  const [maptilerKey, mapProvider] = await Promise.all([getMaptilerKey(), getMapProvider()])
 
-  if (!maptilerKey || maptilerKey === PLACEHOLDER_KEY) {
+  if (mapProvider === 'maptiler' && (!maptilerKey || maptilerKey === PLACEHOLDER_KEY)) {
     return (
       <div className="p-6 text-center text-gray-400 max-w-sm mx-auto pt-16">
         <p className="text-3xl mb-3">🗺️</p>
@@ -43,5 +43,14 @@ export default async function ShareKortPage({
     images: p.images.map(img => ({ ...img, url: `/api/share/${token}/images/${p.id}/${img.id}` })),
   }))
 
-  return <MapView maptilerKey={maptilerKey} initialPins={sharedPins} categories={categories} focusPinId={pin} readOnly />
+  return (
+    <MapView
+      maptilerKey={maptilerKey ?? ''}
+      mapProvider={mapProvider}
+      initialPins={sharedPins}
+      categories={categories}
+      focusPinId={pin}
+      readOnly
+    />
+  )
 }

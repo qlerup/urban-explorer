@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     smtp_password TEXT,
     smtp_host     TEXT,
     smtp_port     INTEGER,
+    map_provider  TEXT NOT NULL DEFAULT 'esri',
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -133,6 +134,7 @@ ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_user TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_password TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_host TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_port INTEGER;
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS map_provider TEXT NOT NULL DEFAULT 'esri';
 
 CREATE TABLE IF NOT EXISTS password_reset_challenges (
     id               UUID PRIMARY KEY,

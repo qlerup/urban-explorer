@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
 import { getPinsForUser } from '@/lib/pins'
 import { getCategoriesForUser, getCategoriesSharedWithUser } from '@/lib/categories'
-import { getMaptilerKey } from '@/lib/settings'
+import { getMaptilerKey, getMapProvider } from '@/lib/settings'
 import { getImportCandidatesForUser } from '@/lib/importCandidates'
 import PinsList from '@/components/PinsList'
 import KmzImport from '@/components/KmzImport'
@@ -13,11 +13,12 @@ export default async function PinsPage() {
   const session = await getSession()
   if (!session) redirect('/login')
 
-  const [pins, categories, sharedCategories, maptilerKey, importCandidates] = await Promise.all([
+  const [pins, categories, sharedCategories, maptilerKey, mapProvider, importCandidates] = await Promise.all([
     getPinsForUser(session.userId),
     getCategoriesForUser(session.userId),
     getCategoriesSharedWithUser(session.userId),
     getMaptilerKey(),
+    getMapProvider(),
     getImportCandidatesForUser(session.userId),
   ])
 
@@ -41,6 +42,7 @@ export default async function PinsPage() {
         initialPins={pins}
         categories={[...categories, ...sharedCategories]}
         maptilerKey={maptilerKey}
+        mapProvider={mapProvider}
         initialImportCandidates={importCandidates}
       />
     </main>

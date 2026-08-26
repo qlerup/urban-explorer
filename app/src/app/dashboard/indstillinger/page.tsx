@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
 import { listUsers } from '@/lib/users'
 import MaptilerSettingsForm from '@/components/MaptilerSettingsForm'
+import MapProviderSettingsForm from '@/components/MapProviderSettingsForm'
 import UsersManager from '@/components/UsersManager'
 import { syncFjordHubUsers } from '@/lib/fjordhub'
 import MailSettingsForm from '@/components/MailSettingsForm'
@@ -20,6 +21,10 @@ export default async function IndstillingerPage() {
     <main className="max-w-md mx-auto px-4 py-8">
       <h1 className="text-xl font-bold text-gray-100 mb-1">Indstillinger</h1>
       <p className="text-sm text-gray-500 mb-6">Konfigurér kortudbyderen for hele appen</p>
+
+      <div className="card mb-8">
+        <MapProviderSettingsForm />
+      </div>
 
       <div className="card mb-8">
         <MaptilerSettingsForm />
