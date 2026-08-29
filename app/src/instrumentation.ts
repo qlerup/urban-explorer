@@ -4,7 +4,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     const { ensureSchema } = await import('./lib/schema')
     await ensureSchema()
-    const { migrateLegacyUsersToFjordHub } = await import('./lib/fjordhub')
-    await migrateLegacyUsersToFjordHub()
+    const { syncFjordHubUsers } = await import('./lib/fjordhub')
+    await syncFjordHubUsers()
   }
 }

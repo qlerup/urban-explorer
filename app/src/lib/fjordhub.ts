@@ -200,9 +200,11 @@ export async function verifyFjordHubSsoToken(token: string): Promise<FjordHubUse
 }
 
 /** Brugere med adgang til appen i FjordHub. Tom liste hvis hubben ikke svarer. */
-export async function listFjordHubUsers(): Promise<FjordHubUser[]> {
+export async function listFjordHubUsers(): Promise<FjordHubUser[] | null> {
   const result = await hubRequest('/api/hub/apps/users', {}, 'GET')
-  if (result.ok !== true || !Array.isArray(result.items)) return []
+  // null betyder, at hubben ikke svarede korrekt. Det er vigtigt at skelne
+  // fra en gyldig, tom liste, ellers kunne et kort netværksudfald slette alle.
+  if (result.ok !== true || !Array.isArray(result.items)) return null
   return (result.items as FjordHubUser[]).filter(u => typeof u.username === 'string' && u.username.trim())
 }
 
@@ -214,6 +216,8 @@ export async function syncFjordHubUsers(): Promise<void> {
   if (!isFjordHubManaged()) return
   await migrateLegacyUsersToFjordHub()
   const hubUsers = await listFjordHubUsers()
+  if (hubUsers === null) return
+
   for (const hubUser of hubUsers) {
     try {
       await ensureManagedLocalUser(hubUser, { recordLogin: false })
@@ -221,6 +225,19 @@ export async function syncFjordHubUsers(): Promise<void> {
       console.error('[fjordhub] Kunne ikke synkronisere bruger:', hubUser.username, error)
     }
   }
+
+  // FjordHub er autoritativ for app-adgang. Fjern kun rækker, som tidligere
+  // er blevet knyttet til et konkret hub-id; selvstændige/ældre lokale rækker
+  // må ikke slettes ved en fejl. FK-reglerne rydder brugerens delinger og data.
+  const activeHubIds = hubUsers
+    .map(user => Number(user.id))
+    .filter(id => Number.isSafeInteger(id) && id > 0)
+  await pool.query(
+    `DELETE FROM users
+     WHERE fjordhub_user_id IS NOT NULL
+       AND NOT (fjordhub_user_id = ANY($1::bigint[]))`,
+    [activeHubIds]
+  )
 }
 
 /**
@@ -234,6 +251,10 @@ export async function ensureManagedLocalUser(
 ): Promise<{ id: string; isAdmin: boolean }> {
   const username = String(hubUser.username || '').trim()
   if (!username) throw new Error('FjordHub user is missing a username')
+  const hubUserId = Number(hubUser.id)
+  if (!Number.isSafeInteger(hubUserId) || hubUserId <= 0) {
+    throw new Error('FjordHub user is missing a valid id')
+  }
 
   const recordLogin = options?.recordLogin !== false
   const firstName = String(hubUser.first_name || '').trim() || username
@@ -243,28 +264,32 @@ export async function ensureManagedLocalUser(
   const legacyEmailHash = hashEmail(managedEmail(username))
 
   const existing = await pool.query(
-    'SELECT id FROM users WHERE email_hash = $1 OR email_hash = $2 ORDER BY (email_hash = $1) DESC LIMIT 1',
-    [emailHash, legacyEmailHash]
+    `SELECT id FROM users
+     WHERE fjordhub_user_id = $1 OR email_hash = $2 OR email_hash = $3
+     ORDER BY (fjordhub_user_id = $1) DESC, (email_hash = $2) DESC
+     LIMIT 1`,
+    [hubUserId, emailHash, legacyEmailHash]
   )
   if (existing.rows[0]) {
     // Synkronisér navn, email og rolle. En gammel @fjordhub.local-identitet
     // opgraderes på samme række, så brugerens pins og delinger bevares.
     await pool.query(
       `UPDATE users SET first_name = $1, email = $2, email_hash = $3, is_admin = $4,
-         last_login_at = CASE WHEN $5 THEN NOW() ELSE last_login_at END,
+         fjordhub_user_id = $5,
+         last_login_at = CASE WHEN $6 THEN NOW() ELSE last_login_at END,
          updated_at = NOW()
-       WHERE id = $6`,
-      [encrypt(firstName), encrypt(email), emailHash, isAdmin, recordLogin, existing.rows[0].id]
+       WHERE id = $7`,
+      [encrypt(firstName), encrypt(email), emailHash, isAdmin, hubUserId, recordLogin, existing.rows[0].id]
     )
     return { id: existing.rows[0].id, isAdmin }
   }
 
   const created = await pool.query(
-    `INSERT INTO users (first_name, email, email_hash, password_hash, is_admin, must_change_password, last_login_at)
-     VALUES ($1, $2, $3, $4, $5, FALSE, CASE WHEN $6 THEN NOW() ELSE NULL END)
+    `INSERT INTO users (first_name, email, email_hash, password_hash, is_admin, must_change_password, fjordhub_user_id, last_login_at)
+     VALUES ($1, $2, $3, $4, $5, FALSE, $6, CASE WHEN $7 THEN NOW() ELSE NULL END)
      ON CONFLICT (email_hash) DO UPDATE SET email_hash = EXCLUDED.email_hash
      RETURNING id`,
-    [encrypt(firstName), encrypt(email), emailHash, MANAGED_PASSWORD_HASH, isAdmin, recordLogin]
+    [encrypt(firstName), encrypt(email), emailHash, MANAGED_PASSWORD_HASH, isAdmin, hubUserId, recordLogin]
   )
   return { id: created.rows[0].id, isAdmin }
 }

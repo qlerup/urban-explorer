@@ -72,7 +72,7 @@ export async function getSharedWorkspacesForUser(userId: string): Promise<Shared
        WHERE ups.shared_with_id = $1
        UNION ALL
        SELECT p.user_id AS owner_id, u.first_name AS owner_first_name,
-              FALSE AS can_edit,
+              ps.can_edit,
               NOT EXISTS (SELECT 1 FROM pin_categories pc WHERE pc.pin_id = p.id) AS is_uncategorized
        FROM pin_shares ps
        JOIN pins p ON p.id = ps.pin_id

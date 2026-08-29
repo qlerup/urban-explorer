@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS fjordhub_migrated_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS fjordhub_user_id BIGINT UNIQUE;
+
 CREATE TABLE IF NOT EXISTS categories (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
