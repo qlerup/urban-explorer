@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getDataforsyningenToken } from '@/lib/settings'
-import { parseAllowedDataforsyningenUrl, describeRejectedUrl } from '@/lib/skraafoto'
+import { parseAllowedDataforsyningenUrl } from '@/lib/skraafoto'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,10 +26,9 @@ export async function GET(
     return NextResponse.json({ error: 'Dataforsyningen-token mangler' }, { status: 503 })
   }
 
-  const rawUrl = request.nextUrl.searchParams.get('url')
-  const cogUrl = parseAllowedDataforsyningenUrl(rawUrl)
+  const cogUrl = parseAllowedDataforsyningenUrl(request.nextUrl.searchParams.get('url'))
   if (!cogUrl) {
-    return NextResponse.json({ error: `Ugyldig billed-URL (${describeRejectedUrl(rawUrl)})` }, { status: 400 })
+    return NextResponse.json({ error: 'Ugyldig billed-URL' }, { status: 400 })
   }
 
   const raw = await params
