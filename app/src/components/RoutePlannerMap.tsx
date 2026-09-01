@@ -17,12 +17,25 @@ interface Props {
   categories: Category[]
 }
 
+interface RouteLeg {
+  fromId: string | null
+  toId: string | null
+  distanceKm: number | null
+  durationSeconds: number | null
+}
+
 interface RouteResult {
   optimized: boolean
   orderedStopIds: string[]
   shapes: string[]
+  legs: RouteLeg[]
   distanceKm: number | null
   durationSeconds: number | null
+}
+
+interface RouteApiResult extends RouteResult {
+  error?: string
+  failedStopId?: string
 }
 
 interface RouteStop {
@@ -80,11 +93,16 @@ function decodePolyline6(encoded: string): [number, number][] {
 
 function formatDuration(seconds: number | null): string | null {
   if (seconds === null || !Number.isFinite(seconds)) return null
-  const minutes = Math.round(seconds / 60)
+  const minutes = Math.max(1, Math.round(seconds / 60))
   if (minutes < 60) return `${minutes} min.`
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
   return rest ? `${hours} t. ${rest} min.` : `${hours} t.`
+}
+
+function formatDistance(km: number | null): string | null {
+  if (km === null || !Number.isFinite(km)) return null
+  return `${km.toLocaleString('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`
 }
 
 function baseTileConfig(mapProvider: MapProvider, maptilerKey: string, geodanmarkAvailable: boolean) {
@@ -119,10 +137,7 @@ function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
     }
 
     navigator.geolocation.getCurrentPosition(
-      position => resolve({
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-      }),
+      position => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
       error => {
         if (error.code === error.PERMISSION_DENIED) {
           reject(new Error('Tillad adgang til din placering for at bruge “Aktuel placering”.'))
@@ -132,11 +147,7 @@ function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
           reject(new Error('Din aktuelle placering kunne ikke findes.'))
         }
       },
-      {
-        enableHighAccuracy: true,
-        timeout: 12_000,
-        maximumAge: 15_000,
-      }
+      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 15_000 }
     )
   })
 }
@@ -173,6 +184,12 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
   const selectedPins = useMemo(() => selectedIds
     .map(id => initialPins.find(pin => pin.id === id))
     .filter((pin): pin is Pin => Boolean(pin)), [selectedIds, initialPins])
+
+  function stopLabel(id: string | null): string {
+    if (!id) return 'Ukendt stop'
+    if (id === CURRENT_START_ID || id === CURRENT_END_ID) return 'Aktuel placering'
+    return initialPins.find(pin => pin.id === id)?.name || 'Ukendt pin'
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -269,8 +286,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
           setRouteError(null)
           setSelectedIds(previous => {
             const existing = previous.indexOf(pin.id)
-            if (existing >= 0) return previous.filter(id => id !== pin.id)
-            return [...previous, pin.id]
+            return existing >= 0 ? previous.filter(id => id !== pin.id) : [...previous, pin.id]
           })
         })
       }
@@ -359,6 +375,17 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
     return { id: pin.id, lat: pin.latitude, lng: pin.longitude }
   }
 
+  function friendlyRouteError(data: RouteApiResult): string {
+    if (!data.failedStopId) return data.error || 'Køreruten kunne ikke beregnes'
+    if (data.failedStopId === CURRENT_START_ID || data.failedStopId === CURRENT_END_ID) {
+      return 'Din aktuelle placering kunne ikke forbindes til en kørbar vej inden for 5 km.'
+    }
+    const pin = initialPins.find(item => item.id === data.failedStopId)
+    return pin
+      ? `“${pin.name}” kunne ikke forbindes til en kørbar vej inden for 5 km.`
+      : data.error || 'Et valgt pin kunne ikke forbindes til en kørbar vej.'
+  }
+
   async function createOptimizedRoute() {
     if (selectedIds.length < 2 || routing) return
 
@@ -367,12 +394,8 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       return
     }
 
-    const startPin = startChoice === 'current'
-      ? null
-      : selectedPins.find(pin => pin.id === startChoice) ?? null
-    const endPin = endChoice === 'current'
-      ? null
-      : selectedPins.find(pin => pin.id === endChoice) ?? null
+    const startPin = startChoice === 'current' ? null : selectedPins.find(pin => pin.id === startChoice) ?? null
+    const endPin = endChoice === 'current' ? null : selectedPins.find(pin => pin.id === endChoice) ?? null
 
     if (startChoice !== 'current' && !startPin) {
       setRouteError('Det valgte startpunkt findes ikke længere blandt de valgte pins.')
@@ -400,7 +423,6 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       const middleStops = selectedPins
         .filter(pin => pin.id !== startChoice && pin.id !== endChoice)
         .map(pinToStop)
-
       const stops = [startStop, ...middleStops, endStop]
 
       const response = await fetch('/api/route-planner/optimized', {
@@ -410,26 +432,21 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       })
 
       const text = await response.text()
-      let data: RouteResult & { error?: string }
+      let data: RouteApiResult
       try {
-        data = JSON.parse(text) as RouteResult & { error?: string }
+        data = JSON.parse(text) as RouteApiResult
       } catch {
-        if (!response.ok) {
-          throw new Error(`Rute-serveren svarede med HTTP ${response.status}. Prøv igen om lidt.`)
-        }
-        throw new Error('Rute-serveren gav et ugyldigt svar')
+        throw new Error(response.ok
+          ? 'Rute-serveren gav et ugyldigt svar'
+          : `Rute-serveren svarede med HTTP ${response.status}. Prøv igen om lidt.`)
       }
 
-      if (!response.ok) throw new Error(data.error || 'Køreruten kunne ikke beregnes')
+      if (!response.ok) throw new Error(friendlyRouteError(data))
 
       setRouteResult(data)
       const selectedIdSet = new Set(selectedIds)
-      const optimizedPins = Array.isArray(data.orderedStopIds)
-        ? data.orderedStopIds.filter(id => selectedIdSet.has(id))
-        : []
-      if (optimizedPins.length === selectedIds.length) {
-        setSelectedIds(optimizedPins)
-      }
+      const optimizedPins = data.orderedStopIds.filter(id => selectedIdSet.has(id))
+      if (optimizedPins.length === selectedIds.length) setSelectedIds(optimizedPins)
       setSelecting(false)
       setShowRouteSetup(false)
     } catch (error) {
@@ -440,9 +457,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
   }
 
   const duration = formatDuration(routeResult?.durationSeconds ?? null)
-  const distanceLabel = routeResult?.distanceKm !== null && routeResult?.distanceKm !== undefined && Number.isFinite(routeResult.distanceKm)
-    ? `${routeResult.distanceKm.toFixed(1)} km`
-    : null
+  const distanceLabel = formatDistance(routeResult?.distanceKm ?? null)
 
   return (
     <div className="relative w-full h-[calc(100dvh-4rem)] min-h-[520px] overflow-hidden bg-void-950">
@@ -504,21 +519,54 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       {selecting && !showRouteSetup && (
         <div className="absolute left-1/2 top-3 z-[600] -translate-x-1/2 rounded-xl border border-void-700 bg-void-900/95 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
           <p className="text-sm font-semibold text-gray-100">Vælg pins på kortet</p>
-          <p className="mt-0.5 text-[11px] text-gray-400">
-            {selectedIds.length} valgt
-          </p>
+          <p className="mt-0.5 text-[11px] text-gray-400">{selectedIds.length} valgt</p>
         </div>
       )}
 
       {routeResult && (
-        <div className="absolute left-1/2 top-3 z-[600] -translate-x-1/2 rounded-xl border border-void-700 bg-void-900/95 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
-          <p className="text-sm font-semibold text-gray-100">Optimeret kørerute</p>
-          <p className="mt-0.5 text-[11px] text-gray-400">
-            {selectedIds.length} valgte pins
-            {distanceLabel ? ` · ${distanceLabel}` : ''}
-            {duration ? ` · ${duration}` : ''}
-          </p>
-        </div>
+        <>
+          <div className="absolute left-1/2 top-3 z-[600] -translate-x-1/2 rounded-xl border border-void-700 bg-void-900/95 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
+            <p className="text-sm font-semibold text-gray-100">Optimeret kørerute</p>
+            <p className="mt-0.5 text-[11px] text-gray-400">
+              {selectedIds.length} valgte pins
+              {distanceLabel ? ` · ${distanceLabel}` : ''}
+              {duration ? ` · ${duration}` : ''}
+            </p>
+          </div>
+
+          {routeResult.legs.length > 0 && (
+            <aside className="absolute bottom-4 left-2 z-[650] w-[min(340px,calc(100vw-1rem))] max-h-[55vh] overflow-y-auto rounded-xl border border-void-700 bg-void-900/95 shadow-xl backdrop-blur-sm">
+              <div className="sticky top-0 border-b border-void-700 bg-void-900/95 px-3 py-2.5">
+                <p className="text-sm font-semibold text-gray-100">Rute</p>
+                <p className="text-[11px] text-gray-500">{routeResult.legs.length} etaper</p>
+              </div>
+              <div className="divide-y divide-void-700/70">
+                {routeResult.legs.map((leg, index) => {
+                  const legDuration = formatDuration(leg.durationSeconds)
+                  const legDistance = formatDistance(leg.distanceKm)
+                  return (
+                    <div key={`${leg.fromId}-${leg.toId}-${index}`} className="flex gap-3 px-3 py-3">
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rust-600 text-[11px] font-bold text-white">
+                        {index + 1}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-medium leading-4 text-gray-200">
+                          <span className="break-words">{stopLabel(leg.fromId)}</span>
+                          <span className="mx-1.5 text-rust-400">→</span>
+                          <span className="break-words">{stopLabel(leg.toId)}</span>
+                        </p>
+                        <p className="mt-1 text-[11px] text-gray-400">
+                          {legDistance ?? 'Ukendt afstand'}
+                          {legDuration ? ` · ${legDuration}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </aside>
+          )}
+        </>
       )}
 
       {routeError && !showRouteSetup && (
@@ -588,10 +636,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
                   className="input w-full"
                   value={startChoice}
                   disabled={routing}
-                  onChange={event => {
-                    setStartChoice(event.target.value)
-                    setRouteError(null)
-                  }}
+                  onChange={event => { setStartChoice(event.target.value); setRouteError(null) }}
                 >
                   <option value="current">📍 Aktuel placering</option>
                   {selectedPins.map((pin, index) => (
@@ -608,10 +653,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
                   className="input w-full"
                   value={endChoice}
                   disabled={routing}
-                  onChange={event => {
-                    setEndChoice(event.target.value)
-                    setRouteError(null)
-                  }}
+                  onChange={event => { setEndChoice(event.target.value); setRouteError(null) }}
                 >
                   <option value="current">📍 Aktuel placering</option>
                   {selectedPins.map((pin, index) => (
