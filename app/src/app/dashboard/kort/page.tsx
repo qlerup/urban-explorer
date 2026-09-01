@@ -5,7 +5,7 @@ import { getPinsForUser } from '@/lib/pins'
 import { getCategoriesForUser, getCategoriesSharedWithUser, getSharedWorkspacesForUser } from '@/lib/categories'
 import { getGridCellsForUser } from '@/lib/grid'
 import { getMaptilerKey, getMapProvider, getDataforsyningenToken } from '@/lib/settings'
-import MapView from '@/components/MapView'
+import MapViewLoader from '@/components/MapViewLoader'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,7 +48,7 @@ export default async function KortPage({ searchParams }: { searchParams: Promise
   ])
 
   return (
-    <MapView
+    <MapViewLoader
       maptilerKey={maptilerKey ?? ''}
       mapProvider={mapProvider}
       geodanmarkAvailable={Boolean(dataforsyningenToken)}
