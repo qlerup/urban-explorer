@@ -165,6 +165,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
   const [routing, setRouting] = useState(false)
   const [routeError, setRouteError] = useState<string | null>(null)
   const [routeResult, setRouteResult] = useState<RouteResult | null>(null)
+  const [routePanelCollapsed, setRoutePanelCollapsed] = useState(false)
   const [showRouteSetup, setShowRouteSetup] = useState(false)
   const [startChoice, setStartChoice] = useState<EndpointChoice>('current')
   const [endChoice, setEndChoice] = useState<EndpointChoice>('current')
@@ -193,6 +194,8 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
 
   useEffect(() => {
     let cancelled = false
+    let zoomMedia: MediaQueryList | null = null
+    let updateZoomPosition: (() => void) | null = null
 
     const init = async () => {
       const leafletModule = await import('leaflet')
@@ -208,10 +211,16 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       const map = L.map(containerRef.current, {
         center: inheritedCenter,
         zoom: inheritedZoom,
-        zoomControl: true,
+        zoomControl: false,
         maxZoom: 22,
         doubleClickZoom: true,
       })
+
+      const zoomControl = L.control.zoom({ position: 'topleft' }).addTo(map)
+      zoomMedia = window.matchMedia('(max-width: 767px)')
+      updateZoomPosition = () => zoomControl.setPosition(zoomMedia?.matches ? 'topright' : 'topleft')
+      updateZoomPosition()
+      zoomMedia.addEventListener('change', updateZoomPosition)
 
       const tiles = baseTileConfig(mapProvider, maptilerKey, geodanmarkAvailable)
       L.tileLayer(tiles.url, {
@@ -240,6 +249,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
 
     return () => {
       cancelled = true
+      if (zoomMedia && updateZoomPosition) zoomMedia.removeEventListener('change', updateZoomPosition)
       mapRef.current?.remove()
       mapRef.current = null
       markerLayerRef.current = null
@@ -350,6 +360,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
   function startSelecting() {
     setSelectedIds([])
     setRouteResult(null)
+    setRoutePanelCollapsed(false)
     setRouteError(null)
     setShowRouteSetup(false)
     setSelecting(true)
@@ -359,6 +370,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
     setSelecting(false)
     setSelectedIds([])
     setRouteResult(null)
+    setRoutePanelCollapsed(false)
     setRouteError(null)
     setShowRouteSetup(false)
   }
@@ -444,6 +456,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       if (!response.ok) throw new Error(friendlyRouteError(data))
 
       setRouteResult(data)
+      setRoutePanelCollapsed(false)
       const selectedIdSet = new Set(selectedIds)
       const optimizedPins = data.orderedStopIds.filter(id => selectedIdSet.has(id))
       if (optimizedPins.length === selectedIds.length) setSelectedIds(optimizedPins)
@@ -535,35 +548,49 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
           </div>
 
           {routeResult.legs.length > 0 && (
-            <aside className="absolute bottom-4 left-2 z-[650] w-[min(340px,calc(100vw-1rem))] max-h-[55vh] overflow-y-auto rounded-xl border border-void-700 bg-void-900/95 shadow-xl backdrop-blur-sm">
-              <div className="sticky top-0 border-b border-void-700 bg-void-900/95 px-3 py-2.5">
-                <p className="text-sm font-semibold text-gray-100">Rute</p>
-                <p className="text-[11px] text-gray-500">{routeResult.legs.length} etaper</p>
+            <aside className={`absolute left-2 z-[650] overflow-hidden rounded-xl border border-void-700 bg-void-900/95 shadow-xl backdrop-blur-sm transition-[width] ${routePanelCollapsed ? 'bottom-20 w-[190px] md:bottom-4' : 'bottom-20 w-[calc(100vw-1rem)] max-w-[340px] max-h-[55vh] md:bottom-4'}`}>
+              <div className={`flex items-center justify-between gap-3 bg-void-900/95 px-3 py-2.5 ${routePanelCollapsed ? '' : 'border-b border-void-700'}`}>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-100">Rute</p>
+                  <p className="text-[11px] text-gray-500">{routeResult.legs.length} etaper</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRoutePanelCollapsed(previous => !previous)}
+                  aria-expanded={!routePanelCollapsed}
+                  aria-label={routePanelCollapsed ? 'Åbn ruteoversigt' : 'Minimér ruteoversigt'}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-void-700 bg-void-800 text-lg font-bold text-gray-300 hover:bg-void-700 hover:text-white"
+                >
+                  {routePanelCollapsed ? '⌃' : '⌄'}
+                </button>
               </div>
-              <div className="divide-y divide-void-700/70">
-                {routeResult.legs.map((leg, index) => {
-                  const legDuration = formatDuration(leg.durationSeconds)
-                  const legDistance = formatDistance(leg.distanceKm)
-                  return (
-                    <div key={`${leg.fromId}-${leg.toId}-${index}`} className="flex gap-3 px-3 py-3">
-                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rust-600 text-[11px] font-bold text-white">
-                        {index + 1}
+
+              {!routePanelCollapsed && (
+                <div className="max-h-[calc(55vh-58px)] overflow-y-auto divide-y divide-void-700/70">
+                  {routeResult.legs.map((leg, index) => {
+                    const legDuration = formatDuration(leg.durationSeconds)
+                    const legDistance = formatDistance(leg.distanceKm)
+                    return (
+                      <div key={`${leg.fromId}-${leg.toId}-${index}`} className="flex gap-3 px-3 py-3">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rust-600 text-[11px] font-bold text-white">
+                          {index + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[12px] font-medium leading-4 text-gray-200">
+                            <span className="break-words">{stopLabel(leg.fromId)}</span>
+                            <span className="mx-1.5 text-rust-400">→</span>
+                            <span className="break-words">{stopLabel(leg.toId)}</span>
+                          </p>
+                          <p className="mt-1 text-[11px] text-gray-400">
+                            {legDistance ?? 'Ukendt afstand'}
+                            {legDuration ? ` · ${legDuration}` : ''}
+                          </p>
+                        </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[12px] font-medium leading-4 text-gray-200">
-                          <span className="break-words">{stopLabel(leg.fromId)}</span>
-                          <span className="mx-1.5 text-rust-400">→</span>
-                          <span className="break-words">{stopLabel(leg.toId)}</span>
-                        </p>
-                        <p className="mt-1 text-[11px] text-gray-400">
-                          {legDistance ?? 'Ukendt afstand'}
-                          {legDuration ? ` · ${legDuration}` : ''}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
             </aside>
           )}
         </>
@@ -683,21 +710,15 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
               <button
                 type="button"
                 disabled={routing}
-                aria-busy={routing}
                 onClick={createOptimizedRoute}
-                className="btn-primary flex min-w-[160px] items-center justify-center gap-2 px-5 py-2.5 disabled:cursor-wait disabled:opacity-60"
+                className="btn-primary flex min-w-[170px] items-center justify-center gap-2 px-5 py-2.5 disabled:cursor-wait disabled:opacity-60"
               >
                 {routing ? (
                   <>
-                    <span
-                      className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
-                      aria-hidden="true"
-                    />
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden="true" />
                     <span>Beregner rute…</span>
                   </>
-                ) : (
-                  'Lav ruten'
-                )}
+                ) : 'Lav ruten'}
               </button>
             </div>
           </div>
