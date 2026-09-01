@@ -164,6 +164,8 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [copying, setCopying] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [deletingRouteId, setDeletingRouteId] = useState<string | null>(null)
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
   const [shareUsers, setShareUsers] = useState<ShareUserOption[]>([])
@@ -400,6 +402,26 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
       setError('Kunne ikke gemme ændringer')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleCopyToOwnMap() {
+    if (!currentPin || !currentPin.ownerName || copying || copied) return
+    setCopying(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/pins/${currentPin.id}/copy`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data.pin) {
+        setError(data.error || 'Kunne ikke gemme pinnen på dit eget kort')
+        return
+      }
+      onCreated(data.pin as Pin)
+      setCopied(true)
+    } catch {
+      setError('Kunne ikke gemme pinnen på dit eget kort')
+    } finally {
+      setCopying(false)
     }
   }
 
@@ -889,6 +911,17 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
           )}
 
           {error && <p className="text-sm text-red-400 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">{error}</p>}
+
+          {!isCreateMode && currentPin?.ownerName && (
+            <button
+              type="button"
+              onClick={handleCopyToOwnMap}
+              disabled={copying || copied}
+              className="btn-secondary w-full disabled:opacity-70"
+            >
+              {copying ? 'Kopierer pin...' : copied ? '✓ Gemt på eget kort' : 'Gem på eget kort'}
+            </button>
+          )}
 
           <div className="flex gap-2 pt-1">
             {readOnly ? (

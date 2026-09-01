@@ -502,7 +502,7 @@ export default function PinsList({
           pin={editingPin}
           categories={categories}
           onClose={() => setEditingPin(null)}
-          onCreated={() => {}}
+          onCreated={created => setPins(prev => [created, ...prev])}
           onUpdated={updated => {
             setPins(prev => prev.map(p => (p.id === updated.id ? updated : p)))
             setEditingPin(updated)

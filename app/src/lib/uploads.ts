@@ -1,5 +1,5 @@
 import { createWriteStream } from 'fs'
-import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from 'fs/promises'
+import { appendFile, copyFile, mkdir, open, readFile, rename, rm, stat, writeFile } from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
 import { Readable } from 'stream'
@@ -245,6 +245,12 @@ export async function readImage(pinId: string, filename: string): Promise<Buffer
 
 export function getMediaPath(pinId: string, filename: string): string {
   return path.join(pinDir(pinId), filename)
+}
+
+export async function copyMediaFile(sourcePinId: string, targetPinId: string, filename: string): Promise<void> {
+  if (path.basename(filename) !== filename) throw new Error('Ugyldigt mediefilnavn')
+  await mkdir(pinDir(targetPinId), { recursive: true })
+  await copyFile(getMediaPath(sourcePinId, filename), getMediaPath(targetPinId, filename))
 }
 
 export async function deleteImage(pinId: string, filename: string): Promise<void> {
