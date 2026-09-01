@@ -51,7 +51,7 @@ const DIRECTION_LABELS: Record<Direction, string> = {
 }
 
 const DIRECTION_ORDER: Direction[] = ['north', 'east', 'south', 'west']
-const MAP_TO_SKRAAFOTO_ZOOM_DIFFERENCE = 12
+const MAP_TO_SKRAAFOTO_ZOOM_DIFFERENCE = 13
 const DEFAULT_SKRAAFOTO_ZOOM = 4
 
 function radians(degrees: number): number {
