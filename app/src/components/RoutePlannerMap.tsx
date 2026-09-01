@@ -318,7 +318,18 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ stops }),
       })
-      const data = await response.json() as RouteResult & { error?: string }
+
+      const text = await response.text()
+      let data: RouteResult & { error?: string }
+      try {
+        data = JSON.parse(text) as RouteResult & { error?: string }
+      } catch {
+        if (!response.ok) {
+          throw new Error(`Rute-serveren svarede med HTTP ${response.status}. Prøv igen om lidt.`)
+        }
+        throw new Error('Rute-serveren gav et ugyldigt svar')
+      }
+
       if (!response.ok) throw new Error(data.error || 'Køreruten kunne ikke beregnes')
 
       setRouteResult(data)
