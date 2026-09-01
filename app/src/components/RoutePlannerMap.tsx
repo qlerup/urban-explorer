@@ -7,6 +7,7 @@ import type { Category, Pin, PinStatus } from '@/types/pin'
 import { PIN_STATUSES, PIN_STATUS_COLORS, PIN_STATUS_LABELS } from '@/types/pin'
 
 type MapProvider = 'maptiler' | 'esri'
+type EndpointChoice = 'current' | string
 
 interface Props {
   maptilerKey: string
@@ -24,6 +25,12 @@ interface RouteResult {
   durationSeconds: number | null
 }
 
+interface RouteStop {
+  id: string
+  lat: number
+  lng: number
+}
+
 type UrbanExplorerWindow = Window & {
   __urbanExplorerMapZoom?: number
   __urbanExplorerMapCenter?: [number, number]
@@ -32,6 +39,8 @@ type UrbanExplorerWindow = Window & {
 const DEFAULT_CENTER: [number, number] = [55.5, 10.4]
 const DEFAULT_ZOOM = 7
 const NO_CATEGORY = '__none__'
+const CURRENT_START_ID = '__current_start__'
+const CURRENT_END_ID = '__current_end__'
 
 function escapeHtml(value: string): string {
   return value
@@ -102,6 +111,36 @@ function baseTileConfig(mapProvider: MapProvider, maptilerKey: string, geodanmar
   }
 }
 
+function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Din browser understøtter ikke aktuel placering.'))
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      position => resolve({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      }),
+      error => {
+        if (error.code === error.PERMISSION_DENIED) {
+          reject(new Error('Tillad adgang til din placering for at bruge “Aktuel placering”.'))
+        } else if (error.code === error.TIMEOUT) {
+          reject(new Error('Din aktuelle placering kunne ikke findes hurtigt nok. Prøv igen.'))
+        } else {
+          reject(new Error('Din aktuelle placering kunne ikke findes.'))
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12_000,
+        maximumAge: 15_000,
+      }
+    )
+  })
+}
+
 export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAvailable, initialPins, categories }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<Leaflet.Map | null>(null)
@@ -115,6 +154,9 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
   const [routing, setRouting] = useState(false)
   const [routeError, setRouteError] = useState<string | null>(null)
   const [routeResult, setRouteResult] = useState<RouteResult | null>(null)
+  const [showRouteSetup, setShowRouteSetup] = useState(false)
+  const [startChoice, setStartChoice] = useState<EndpointChoice>('current')
+  const [endChoice, setEndChoice] = useState<EndpointChoice>('current')
   const [activeCategoryIds, setActiveCategoryIds] = useState<Set<string>>(
     () => new Set([...categories.map(category => category.id), NO_CATEGORY])
   )
@@ -127,6 +169,10 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       : activeCategoryIds.has(NO_CATEGORY)
     return categoryMatch && activeStatuses.has(pin.status) && activeRatings.has(pin.rating)
   }), [initialPins, activeCategoryIds, activeStatuses, activeRatings])
+
+  const selectedPins = useMemo(() => selectedIds
+    .map(id => initialPins.find(pin => pin.id === id))
+    .filter((pin): pin is Pin => Boolean(pin)), [selectedIds, initialPins])
 
   useEffect(() => {
     let cancelled = false
@@ -289,6 +335,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
     setSelectedIds([])
     setRouteResult(null)
     setRouteError(null)
+    setShowRouteSetup(false)
     setSelecting(true)
   }
 
@@ -297,22 +344,65 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
     setSelectedIds([])
     setRouteResult(null)
     setRouteError(null)
+    setShowRouteSetup(false)
+  }
+
+  function openRouteSetup() {
+    if (selectedIds.length < 2) return
+    setRouteError(null)
+    setStartChoice('current')
+    setEndChoice('current')
+    setShowRouteSetup(true)
+  }
+
+  function pinToStop(pin: Pin): RouteStop {
+    return { id: pin.id, lat: pin.latitude, lng: pin.longitude }
   }
 
   async function createOptimizedRoute() {
     if (selectedIds.length < 2 || routing) return
 
-    const stops = selectedIds
-      .map(id => initialPins.find(pin => pin.id === id))
-      .filter((pin): pin is Pin => Boolean(pin))
-      .map(pin => ({ id: pin.id, lat: pin.latitude, lng: pin.longitude }))
+    if (startChoice !== 'current' && endChoice !== 'current' && startChoice === endChoice) {
+      setRouteError('Start og slut kan ikke være det samme valgte pin.')
+      return
+    }
 
-    if (stops.length < 2) return
+    const startPin = startChoice === 'current'
+      ? null
+      : selectedPins.find(pin => pin.id === startChoice) ?? null
+    const endPin = endChoice === 'current'
+      ? null
+      : selectedPins.find(pin => pin.id === endChoice) ?? null
+
+    if (startChoice !== 'current' && !startPin) {
+      setRouteError('Det valgte startpunkt findes ikke længere blandt de valgte pins.')
+      return
+    }
+    if (endChoice !== 'current' && !endPin) {
+      setRouteError('Det valgte slutpunkt findes ikke længere blandt de valgte pins.')
+      return
+    }
 
     setRouting(true)
     setRouteError(null)
 
     try {
+      const needsCurrentPosition = startChoice === 'current' || endChoice === 'current'
+      const currentPosition = needsCurrentPosition ? await getCurrentPosition() : null
+
+      const startStop: RouteStop = startChoice === 'current'
+        ? { id: CURRENT_START_ID, lat: currentPosition!.lat, lng: currentPosition!.lng }
+        : pinToStop(startPin!)
+      const endStop: RouteStop = endChoice === 'current'
+        ? { id: CURRENT_END_ID, lat: currentPosition!.lat, lng: currentPosition!.lng }
+        : pinToStop(endPin!)
+
+      const middleStops = selectedPins
+        .filter(pin => pin.id !== startChoice && pin.id !== endChoice)
+        .map(pinToStop)
+
+      const stops = [startStop, ...middleStops, endStop]
+
       const response = await fetch('/api/route-planner/optimized', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -333,10 +423,15 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       if (!response.ok) throw new Error(data.error || 'Køreruten kunne ikke beregnes')
 
       setRouteResult(data)
-      if (Array.isArray(data.orderedStopIds) && data.orderedStopIds.length === selectedIds.length) {
-        setSelectedIds(data.orderedStopIds)
+      const selectedIdSet = new Set(selectedIds)
+      const optimizedPins = Array.isArray(data.orderedStopIds)
+        ? data.orderedStopIds.filter(id => selectedIdSet.has(id))
+        : []
+      if (optimizedPins.length === selectedIds.length) {
+        setSelectedIds(optimizedPins)
       }
       setSelecting(false)
+      setShowRouteSetup(false)
     } catch (error) {
       setRouteError(error instanceof Error ? error.message : 'Køreruten kunne ikke beregnes')
     } finally {
@@ -406,11 +501,11 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
         </div>
       </aside>
 
-      {selecting && (
+      {selecting && !showRouteSetup && (
         <div className="absolute left-1/2 top-3 z-[600] -translate-x-1/2 rounded-xl border border-void-700 bg-void-900/95 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
           <p className="text-sm font-semibold text-gray-100">Vælg pins på kortet</p>
           <p className="mt-0.5 text-[11px] text-gray-400">
-            {selectedIds.length} valgt · første pin bliver start, sidste pin bliver slut
+            {selectedIds.length} valgt
           </p>
         </div>
       )}
@@ -419,14 +514,14 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
         <div className="absolute left-1/2 top-3 z-[600] -translate-x-1/2 rounded-xl border border-void-700 bg-void-900/95 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
           <p className="text-sm font-semibold text-gray-100">Optimeret kørerute</p>
           <p className="mt-0.5 text-[11px] text-gray-400">
-            {selectedIds.length} stop
+            {selectedIds.length} valgte pins
             {distanceLabel ? ` · ${distanceLabel}` : ''}
             {duration ? ` · ${duration}` : ''}
           </p>
         </div>
       )}
 
-      {routeError && (
+      {routeError && !showRouteSetup && (
         <div className="absolute bottom-24 left-1/2 z-[700] w-[min(90vw,520px)] -translate-x-1/2 rounded-xl border border-red-900/60 bg-red-950/90 px-4 py-3 text-center text-sm text-red-200 shadow-xl">
           {routeError}
         </div>
@@ -439,18 +534,18 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
           </button>
         )}
 
-        {selecting && (
+        {selecting && !showRouteSetup && (
           <>
             <button type="button" onClick={cancelSelecting} className="btn-secondary whitespace-nowrap px-4 py-3 shadow-xl">
               Annuller
             </button>
             <button
               type="button"
-              onClick={createOptimizedRoute}
-              disabled={selectedIds.length < 2 || routing}
+              onClick={openRouteSetup}
+              disabled={selectedIds.length < 2}
               className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {routing ? 'Beregner rute…' : 'Lav en optimeret kørerute'}
+              Lav en optimeret kørerute
             </button>
           </>
         )}
@@ -461,6 +556,100 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
           </button>
         )}
       </div>
+
+      {showRouteSetup && (
+        <div
+          className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/65 px-4"
+          onClick={() => { if (!routing) setShowRouteSetup(false) }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-void-700 bg-void-900 p-5 shadow-2xl"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-100">Vælg start og slut</h2>
+                <p className="mt-1 text-sm text-gray-400">De øvrige valgte pins bliver optimeret som mellemstop.</p>
+              </div>
+              <button
+                type="button"
+                disabled={routing}
+                onClick={() => setShowRouteSetup(false)}
+                className="text-2xl leading-none text-gray-500 hover:text-gray-200 disabled:opacity-40"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-gray-300">Start</span>
+                <select
+                  className="input w-full"
+                  value={startChoice}
+                  disabled={routing}
+                  onChange={event => {
+                    setStartChoice(event.target.value)
+                    setRouteError(null)
+                  }}
+                >
+                  <option value="current">📍 Aktuel placering</option>
+                  {selectedPins.map((pin, index) => (
+                    <option key={pin.id} value={pin.id} disabled={endChoice === pin.id}>
+                      Pin {index + 1} · {pin.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-gray-300">Slut</span>
+                <select
+                  className="input w-full"
+                  value={endChoice}
+                  disabled={routing}
+                  onChange={event => {
+                    setEndChoice(event.target.value)
+                    setRouteError(null)
+                  }}
+                >
+                  <option value="current">📍 Aktuel placering</option>
+                  {selectedPins.map((pin, index) => (
+                    <option key={pin.id} value={pin.id} disabled={startChoice === pin.id}>
+                      Pin {index + 1} · {pin.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {routeError && (
+              <div className="mt-4 rounded-xl border border-red-900/60 bg-red-950/70 px-3 py-2 text-sm text-red-200">
+                {routeError}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={routing}
+                onClick={() => setShowRouteSetup(false)}
+                className="btn-secondary px-4 py-2.5 disabled:opacity-40"
+              >
+                Tilbage
+              </button>
+              <button
+                type="button"
+                disabled={routing}
+                onClick={createOptimizedRoute}
+                className="btn-primary px-5 py-2.5 disabled:cursor-wait disabled:opacity-60"
+              >
+                {routing ? 'Beregner rute…' : 'Lav ruten'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
