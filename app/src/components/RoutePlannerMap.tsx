@@ -683,10 +683,21 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
               <button
                 type="button"
                 disabled={routing}
+                aria-busy={routing}
                 onClick={createOptimizedRoute}
-                className="btn-primary px-5 py-2.5 disabled:cursor-wait disabled:opacity-60"
+                className="btn-primary flex min-w-[160px] items-center justify-center gap-2 px-5 py-2.5 disabled:cursor-wait disabled:opacity-60"
               >
-                {routing ? 'Beregner rute…' : 'Lav ruten'}
+                {routing ? (
+                  <>
+                    <span
+                      className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white"
+                      aria-hidden="true"
+                    />
+                    <span>Beregner rute…</span>
+                  </>
+                ) : (
+                  'Lav ruten'
+                )}
               </button>
             </div>
           </div>
