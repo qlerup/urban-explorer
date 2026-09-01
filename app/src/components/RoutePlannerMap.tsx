@@ -9,19 +9,16 @@ import { PIN_STATUSES, PIN_STATUS_COLORS, PIN_STATUS_LABELS } from '@/types/pin'
 type MapProvider = 'maptiler' | 'esri'
 type EndpointChoice = 'current' | string
 
-interface Props {
-  maptilerKey: string
-  mapProvider: MapProvider
-  geodanmarkAvailable: boolean
-  initialPins: Pin[]
-  categories: Category[]
-}
-
 interface RouteLeg {
   fromId: string | null
   toId: string | null
   distanceKm: number | null
   durationSeconds: number | null
+}
+
+interface StopCoordinate {
+  lat: number
+  lng: number
 }
 
 interface RouteResult {
@@ -31,11 +28,35 @@ interface RouteResult {
   legs: RouteLeg[]
   distanceKm: number | null
   durationSeconds: number | null
+  selectedPinIds: string[]
+  stopLabels: Record<string, string>
+  stopCoordinates: Record<string, StopCoordinate>
 }
 
-interface RouteApiResult extends RouteResult {
+interface RouteApiResult extends Partial<RouteResult> {
+  optimized: boolean
+  orderedStopIds: string[]
+  shapes: string[]
+  legs: RouteLeg[]
+  distanceKm: number | null
+  durationSeconds: number | null
   error?: string
   failedStopId?: string
+}
+
+interface InitialSavedRoute {
+  id: string
+  name: string
+  routeData: RouteResult
+}
+
+interface Props {
+  maptilerKey: string
+  mapProvider: MapProvider
+  geodanmarkAvailable: boolean
+  initialPins: Pin[]
+  categories: Category[]
+  initialSavedRoute?: InitialSavedRoute | null
 }
 
 interface RouteStop {
@@ -152,7 +173,14 @@ function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
   })
 }
 
-export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAvailable, initialPins, categories }: Props) {
+export default function RoutePlannerMap({
+  maptilerKey,
+  mapProvider,
+  geodanmarkAvailable,
+  initialPins,
+  categories,
+  initialSavedRoute = null,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<Leaflet.Map | null>(null)
   const leafletRef = useRef<typeof Leaflet | null>(null)
@@ -161,14 +189,20 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
 
   const [mapReady, setMapReady] = useState(false)
   const [selecting, setSelecting] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => initialSavedRoute?.routeData.selectedPinIds ?? [])
   const [routing, setRouting] = useState(false)
   const [routeError, setRouteError] = useState<string | null>(null)
-  const [routeResult, setRouteResult] = useState<RouteResult | null>(null)
+  const [routeResult, setRouteResult] = useState<RouteResult | null>(() => initialSavedRoute?.routeData ?? null)
   const [routePanelCollapsed, setRoutePanelCollapsed] = useState(false)
   const [showRouteSetup, setShowRouteSetup] = useState(false)
   const [startChoice, setStartChoice] = useState<EndpointChoice>('current')
   const [endChoice, setEndChoice] = useState<EndpointChoice>('current')
+  const [savedRouteId, setSavedRouteId] = useState<string | null>(initialSavedRoute?.id ?? null)
+  const [savedRouteName, setSavedRouteName] = useState<string | null>(initialSavedRoute?.name ?? null)
+  const [showSaveRoute, setShowSaveRoute] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [savingRoute, setSavingRoute] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [activeCategoryIds, setActiveCategoryIds] = useState<Set<string>>(
     () => new Set([...categories.map(category => category.id), NO_CATEGORY])
   )
@@ -188,6 +222,8 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
 
   function stopLabel(id: string | null): string {
     if (!id) return 'Ukendt stop'
+    const snapshotLabel = routeResult?.stopLabels?.[id]
+    if (snapshotLabel) return snapshotLabel
     if (id === CURRENT_START_ID || id === CURRENT_END_ID) return 'Aktuel placering'
     return initialPins.find(pin => pin.id === id)?.name || 'Ukendt pin'
   }
@@ -293,6 +329,8 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       if (selecting) {
         marker.on('click', () => {
           setRouteResult(null)
+          setSavedRouteId(null)
+          setSavedRouteName(null)
           setRouteError(null)
           setSelectedIds(previous => {
             const existing = previous.indexOf(pin.id)
@@ -309,7 +347,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
     const L = leafletRef.current
     const map = mapRef.current
     const layer = routeLayerRef.current
-    if (!L || !map || !layer) return
+    if (!L || !map || !layer || !mapReady) return
 
     layer.clearLayers()
     if (!routeResult) return
@@ -331,7 +369,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
     if (allPoints.length > 1) {
       map.fitBounds(L.latLngBounds(allPoints), { padding: [50, 50], maxZoom: 16 })
     }
-  }, [routeResult])
+  }, [routeResult, mapReady])
 
   function toggleCategory(id: string) {
     setActiveCategoryIds(previous => {
@@ -362,6 +400,9 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
     setRouteResult(null)
     setRoutePanelCollapsed(false)
     setRouteError(null)
+    setSavedRouteId(null)
+    setSavedRouteName(null)
+    setShowSaveRoute(false)
     setShowRouteSetup(false)
     setSelecting(true)
   }
@@ -372,6 +413,9 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
     setRouteResult(null)
     setRoutePanelCollapsed(false)
     setRouteError(null)
+    setSavedRouteId(null)
+    setSavedRouteName(null)
+    setShowSaveRoute(false)
     setShowRouteSetup(false)
   }
 
@@ -385,6 +429,11 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
 
   function pinToStop(pin: Pin): RouteStop {
     return { id: pin.id, lat: pin.latitude, lng: pin.longitude }
+  }
+
+  function labelForStop(stop: RouteStop): string {
+    if (stop.id === CURRENT_START_ID || stop.id === CURRENT_END_ID) return 'Aktuel placering'
+    return initialPins.find(pin => pin.id === stop.id)?.name || 'Ukendt pin'
   }
 
   function friendlyRouteError(data: RouteApiResult): string {
@@ -455,10 +504,27 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
 
       if (!response.ok) throw new Error(friendlyRouteError(data))
 
-      setRouteResult(data)
-      setRoutePanelCollapsed(false)
       const selectedIdSet = new Set(selectedIds)
       const optimizedPins = data.orderedStopIds.filter(id => selectedIdSet.has(id))
+      const stopLabels = Object.fromEntries(stops.map(stop => [stop.id, labelForStop(stop)]))
+      const stopCoordinates = Object.fromEntries(stops.map(stop => [stop.id, { lat: stop.lat, lng: stop.lng }]))
+
+      const enrichedResult: RouteResult = {
+        optimized: data.optimized,
+        orderedStopIds: data.orderedStopIds,
+        shapes: data.shapes,
+        legs: data.legs,
+        distanceKm: data.distanceKm,
+        durationSeconds: data.durationSeconds,
+        selectedPinIds: optimizedPins,
+        stopLabels,
+        stopCoordinates,
+      }
+
+      setRouteResult(enrichedResult)
+      setRoutePanelCollapsed(false)
+      setSavedRouteId(null)
+      setSavedRouteName(null)
       if (optimizedPins.length === selectedIds.length) setSelectedIds(optimizedPins)
       setSelecting(false)
       setShowRouteSetup(false)
@@ -469,14 +535,51 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
     }
   }
 
+  function openSaveRoute() {
+    if (!routeResult || savedRouteId) return
+    const defaultName = `Rute ${new Date().toLocaleDateString('da-DK')}`
+    setSaveName(savedRouteName || defaultName)
+    setSaveError(null)
+    setShowSaveRoute(true)
+  }
+
+  async function saveCurrentRoute() {
+    if (!routeResult || savingRoute) return
+    const name = saveName.trim()
+    if (!name) {
+      setSaveError('Giv ruten et navn.')
+      return
+    }
+
+    setSavingRoute(true)
+    setSaveError(null)
+    try {
+      const response = await fetch('/api/route-planner/saved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, routeData: routeResult }),
+      })
+      const data = await response.json() as { id?: string; name?: string; error?: string }
+      if (!response.ok || !data.id) throw new Error(data.error || 'Ruten kunne ikke gemmes')
+
+      setSavedRouteId(data.id)
+      setSavedRouteName(data.name || name)
+      setShowSaveRoute(false)
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Ruten kunne ikke gemmes')
+    } finally {
+      setSavingRoute(false)
+    }
+  }
+
   const duration = formatDuration(routeResult?.durationSeconds ?? null)
   const distanceLabel = formatDistance(routeResult?.distanceKm ?? null)
 
   return (
-    <div className="relative w-full h-[calc(100dvh-4rem)] min-h-[520px] overflow-hidden bg-void-950">
+    <div className="relative h-[calc(100dvh-4rem)] min-h-[520px] w-full overflow-hidden bg-void-950">
       <div ref={containerRef} className="absolute inset-0" />
 
-      <aside className="absolute left-2 top-2 z-[500] w-28 md:w-32 rounded-xl border border-void-700 bg-void-900/90 p-2 shadow-xl backdrop-blur-sm">
+      <aside className="absolute left-2 top-2 z-[500] w-28 rounded-xl border border-void-700 bg-void-900/90 p-2 shadow-xl backdrop-blur-sm md:w-32">
         <p className="mb-1 text-[10px] text-gray-500">Kategorier</p>
         <div className="flex flex-wrap gap-1">
           {categories.filter(category => !category.ownerId).map(category => (
@@ -539,7 +642,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       {routeResult && (
         <>
           <div className="absolute left-1/2 top-3 z-[600] -translate-x-1/2 rounded-xl border border-void-700 bg-void-900/95 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
-            <p className="text-sm font-semibold text-gray-100">Optimeret kørerute</p>
+            <p className="text-sm font-semibold text-gray-100">{savedRouteName || 'Optimeret kørerute'}</p>
             <p className="mt-0.5 text-[11px] text-gray-400">
               {selectedIds.length} valgte pins
               {distanceLabel ? ` · ${distanceLabel}` : ''}
@@ -548,7 +651,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
           </div>
 
           {routeResult.legs.length > 0 && (
-            <aside className={`absolute left-2 z-[650] overflow-hidden rounded-xl border border-void-700 bg-void-900/95 shadow-xl backdrop-blur-sm transition-[width] ${routePanelCollapsed ? 'bottom-20 w-[190px] md:bottom-4' : 'bottom-20 w-[calc(100vw-1rem)] max-w-[340px] max-h-[55vh] md:bottom-4'}`}>
+            <aside className={`absolute left-2 z-[650] overflow-hidden rounded-xl border border-void-700 bg-void-900/95 shadow-xl backdrop-blur-sm transition-[width] ${routePanelCollapsed ? 'bottom-20 w-[190px] md:bottom-4' : 'bottom-20 max-h-[55vh] w-[calc(100vw-1rem)] max-w-[340px] md:bottom-4'}`}>
               <div className={`flex items-center justify-between gap-3 bg-void-900/95 px-3 py-2.5 ${routePanelCollapsed ? '' : 'border-b border-void-700'}`}>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-100">Rute</p>
@@ -566,7 +669,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
               </div>
 
               {!routePanelCollapsed && (
-                <div className="max-h-[calc(55vh-58px)] overflow-y-auto divide-y divide-void-700/70">
+                <div className="max-h-[calc(55vh-58px)] divide-y divide-void-700/70 overflow-y-auto">
                   {routeResult.legs.map((leg, index) => {
                     const legDuration = formatDuration(leg.durationSeconds)
                     const legDistance = formatDistance(leg.distanceKm)
@@ -602,7 +705,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
         </div>
       )}
 
-      <div className="absolute bottom-5 left-1/2 z-[700] flex -translate-x-1/2 items-center gap-2">
+      <div className="absolute bottom-5 left-1/2 z-[700] flex max-w-[calc(100vw-1rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-2">
         {!selecting && !routeResult && (
           <button type="button" onClick={startSelecting} className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl">
             Vælg pins
@@ -626,9 +729,19 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
         )}
 
         {routeResult && (
-          <button type="button" onClick={startSelecting} className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl">
-            Vælg pins igen
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={openSaveRoute}
+              disabled={Boolean(savedRouteId)}
+              className="btn-secondary whitespace-nowrap px-4 py-3 shadow-xl disabled:cursor-default disabled:opacity-70"
+            >
+              {savedRouteId ? '✓ Rute gemt' : 'Gem rute'}
+            </button>
+            <button type="button" onClick={startSelecting} className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl">
+              Vælg pins igen
+            </button>
+          </>
         )}
       </div>
 
@@ -719,6 +832,80 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
                     <span>Beregner rute…</span>
                   </>
                 ) : 'Lav ruten'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveRoute && routeResult && (
+        <div
+          className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/65 px-4"
+          onClick={() => { if (!savingRoute) setShowSaveRoute(false) }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-void-700 bg-void-900 p-5 shadow-2xl"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-100">Gem rute</h2>
+                <p className="mt-1 text-sm text-gray-400">Ruten bliver gemt på din profil og kan indlæses igen senere.</p>
+              </div>
+              <button
+                type="button"
+                disabled={savingRoute}
+                onClick={() => setShowSaveRoute(false)}
+                className="text-2xl leading-none text-gray-500 hover:text-gray-200 disabled:opacity-40"
+              >
+                ×
+              </button>
+            </div>
+
+            <label className="block">
+              <span className="mb-1.5 block text-sm font-medium text-gray-300">Rutenavn</span>
+              <input
+                type="text"
+                maxLength={100}
+                autoFocus
+                value={saveName}
+                disabled={savingRoute}
+                onChange={event => { setSaveName(event.target.value); setSaveError(null) }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' && !savingRoute) void saveCurrentRoute()
+                }}
+                className="input w-full"
+                placeholder="Fx Søndagstur på Lolland"
+              />
+            </label>
+
+            {saveError && (
+              <div className="mt-4 rounded-xl border border-red-900/60 bg-red-950/70 px-3 py-2 text-sm text-red-200">
+                {saveError}
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={savingRoute}
+                onClick={() => setShowSaveRoute(false)}
+                className="btn-secondary px-4 py-2.5 disabled:opacity-40"
+              >
+                Annuller
+              </button>
+              <button
+                type="button"
+                disabled={savingRoute}
+                onClick={() => void saveCurrentRoute()}
+                className="btn-primary flex min-w-[135px] items-center justify-center gap-2 px-5 py-2.5 disabled:cursor-wait disabled:opacity-60"
+              >
+                {savingRoute ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden="true" />
+                    <span>Gemmer…</span>
+                  </>
+                ) : 'Gem rute'}
               </button>
             </div>
           </div>
