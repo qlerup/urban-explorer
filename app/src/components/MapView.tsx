@@ -89,11 +89,13 @@ interface MapLayerPreviewTile {
   z: number
 }
 
-const MAP_LAYERS: { id: MapLayerId; label: string }[] = [
-  { id: 'satellite-v4', label: 'Satellit' },
-  { id: 'hybrid-v4', label: 'Vejnavne' },
-  { id: 'outdoor-v4', label: 'Outdoor' },
-  { id: 'geodanmark-ortofoto', label: 'GeoDanmark Ortofoto' },
+type MapLayerGroup = 'generic' | 'danmark'
+
+const MAP_LAYERS: { id: MapLayerId; label: string; group: MapLayerGroup }[] = [
+  { id: 'satellite-v4', label: 'Satellit', group: 'generic' },
+  { id: 'hybrid-v4', label: 'Vejnavne', group: 'generic' },
+  { id: 'outdoor-v4', label: 'Outdoor', group: 'generic' },
+  { id: 'geodanmark-ortofoto', label: 'GeoDanmark Ortofoto', group: 'danmark' },
 ]
 
 const MAP_ATTRIBUTION =
@@ -1866,41 +1868,52 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
           })()}
 
           <div className={`${layerPickerOpen ? 'block' : 'hidden'} md:group-focus-within:block md:group-hover:block`}>
-            <div className="my-1.5 border-t border-void-700" />
-            <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Andre kortlag</p>
-            <div className="space-y-1">
-              {availableMapLayers.filter(layer => layer.id !== mapLayerId).map(layer => {
-                const previewUrl = previewTile ? mapLayerPreviewUrl(layer.id, mapProvider, maptilerKey, previewTile) : null
-                const disabled = isMapLayerDisabled(layer.id)
-                return (
-                  <button
-                    key={layer.id}
-                    type="button"
-                    onClick={() => chooseMapLayer(layer.id)}
-                    disabled={disabled}
-                    aria-pressed={false}
-                    aria-disabled={disabled}
-                    title={disabled ? 'Kræver en Dataforsyningen-token (Indstillinger)' : undefined}
-                    className={`w-full rounded-xl p-1 text-left text-xs font-semibold transition-colors flex items-center gap-2.5 ${
-                      disabled ? 'text-gray-600 opacity-50 cursor-not-allowed' : 'text-gray-400 hover:bg-void-800 hover:text-gray-100'
-                    }`}
-                  >
-                    <span className={`h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-void-600 bg-void-800 ${disabled ? 'grayscale' : ''}`}>
-                      {previewUrl && (
-                        <span
-                          className="block h-full w-full bg-cover bg-center"
-                          style={{ backgroundImage: previewUrl ?? undefined }}
-                        />
-                      )}
-                    </span>
-                    <span className="min-w-0 truncate">{layer.label}</span>
-                    {disabled && (
-                      <span className="ml-auto shrink-0 text-[9px] font-semibold uppercase tracking-wide text-gray-600">Kræver token</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
+            {([
+              { heading: 'Andre kortlag', group: 'generic' as MapLayerGroup },
+              { heading: 'Danmark', group: 'danmark' as MapLayerGroup },
+            ]).map(({ heading, group }) => {
+              const layers = availableMapLayers.filter(layer => layer.id !== mapLayerId && layer.group === group)
+              if (layers.length === 0) return null
+              return (
+                <div key={group}>
+                  <div className="my-1.5 border-t border-void-700" />
+                  <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{heading}</p>
+                  <div className="space-y-1">
+                    {layers.map(layer => {
+                      const previewUrl = previewTile ? mapLayerPreviewUrl(layer.id, mapProvider, maptilerKey, previewTile) : null
+                      const disabled = isMapLayerDisabled(layer.id)
+                      return (
+                        <button
+                          key={layer.id}
+                          type="button"
+                          onClick={() => chooseMapLayer(layer.id)}
+                          disabled={disabled}
+                          aria-pressed={false}
+                          aria-disabled={disabled}
+                          title={disabled ? 'Kræver en Dataforsyningen-token (Indstillinger)' : undefined}
+                          className={`w-full rounded-xl p-1 text-left text-xs font-semibold transition-colors flex items-center gap-2.5 ${
+                            disabled ? 'text-gray-600 opacity-50 cursor-not-allowed' : 'text-gray-400 hover:bg-void-800 hover:text-gray-100'
+                          }`}
+                        >
+                          <span className={`h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-void-600 bg-void-800 ${disabled ? 'grayscale' : ''}`}>
+                            {previewUrl && (
+                              <span
+                                className="block h-full w-full bg-cover bg-center"
+                                style={{ backgroundImage: previewUrl ?? undefined }}
+                              />
+                            )}
+                          </span>
+                          <span className="min-w-0 truncate">{layer.label}</span>
+                          {disabled && (
+                            <span className="ml-auto shrink-0 text-[9px] font-semibold uppercase tracking-wide text-gray-600">Kræver token</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -2114,49 +2127,63 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
                 Luk
               </button>
             </div>
-            <div className="space-y-1.5 px-5">
-              {availableMapLayers.map(layer => {
-                const active = layer.id === mapLayerId
-                const disabled = isMapLayerDisabled(layer.id)
-                const layerPreviewUrl = previewTile ? mapLayerPreviewUrl(layer.id, mapProvider, maptilerKey, previewTile) : null
-                return (
-                  <button
-                    key={layer.id}
-                    type="button"
-                    onClick={() => chooseMapLayer(layer.id)}
-                    disabled={disabled}
-                    aria-pressed={active}
-                    aria-disabled={disabled}
-                    className={`flex w-full items-center gap-3 rounded-xl border p-2 text-left transition-colors ${
-                      disabled
-                        ? 'border-void-800 opacity-50 cursor-not-allowed'
-                        : active
-                        ? 'border-rust-500 bg-rust-600/15'
-                        : 'border-void-700 active:bg-void-800'
-                    }`}
-                  >
-                    <span className={`h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-void-800 ring-1 ring-void-600 ${disabled ? 'grayscale' : ''}`}>
-                      {layerPreviewUrl && (
-                        <span
-                          className="block h-full w-full bg-cover bg-center"
-                          style={{ backgroundImage: layerPreviewUrl ?? undefined }}
-                        />
-                      )}
-                    </span>
-                    <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${disabled ? 'text-gray-600' : active ? 'text-white' : 'text-gray-300'}`}>
-                      {layer.label}
-                    </span>
-                    {disabled ? (
-                      <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-gray-600">Kræver token</span>
-                    ) : active ? (
-                      <svg className="h-5 w-5 shrink-0 text-rust-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
+            {([
+              { heading: null, group: 'generic' as MapLayerGroup },
+              { heading: 'Danmark', group: 'danmark' as MapLayerGroup },
+            ]).map(({ heading, group }) => {
+              const layers = availableMapLayers.filter(layer => layer.group === group)
+              if (layers.length === 0) return null
+              return (
+                <div key={group}>
+                  {heading && (
+                    <p className="px-5 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-gray-500">{heading}</p>
+                  )}
+                  <div className="space-y-1.5 px-5">
+                    {layers.map(layer => {
+                      const active = layer.id === mapLayerId
+                      const disabled = isMapLayerDisabled(layer.id)
+                      const layerPreviewUrl = previewTile ? mapLayerPreviewUrl(layer.id, mapProvider, maptilerKey, previewTile) : null
+                      return (
+                        <button
+                          key={layer.id}
+                          type="button"
+                          onClick={() => chooseMapLayer(layer.id)}
+                          disabled={disabled}
+                          aria-pressed={active}
+                          aria-disabled={disabled}
+                          className={`flex w-full items-center gap-3 rounded-xl border p-2 text-left transition-colors ${
+                            disabled
+                              ? 'border-void-800 opacity-50 cursor-not-allowed'
+                              : active
+                              ? 'border-rust-500 bg-rust-600/15'
+                              : 'border-void-700 active:bg-void-800'
+                          }`}
+                        >
+                          <span className={`h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-void-800 ring-1 ring-void-600 ${disabled ? 'grayscale' : ''}`}>
+                            {layerPreviewUrl && (
+                              <span
+                                className="block h-full w-full bg-cover bg-center"
+                                style={{ backgroundImage: layerPreviewUrl ?? undefined }}
+                              />
+                            )}
+                          </span>
+                          <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${disabled ? 'text-gray-600' : active ? 'text-white' : 'text-gray-300'}`}>
+                            {layer.label}
+                          </span>
+                          {disabled ? (
+                            <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-gray-600">Kræver token</span>
+                          ) : active ? (
+                            <svg className="h-5 w-5 shrink-0 text-rust-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
             <p className="px-5 pb-1 pt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">Lag på kortet</p>
             <div className="px-5">
               {[
