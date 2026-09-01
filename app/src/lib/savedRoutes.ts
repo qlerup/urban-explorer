@@ -36,10 +36,18 @@ CREATE TABLE IF NOT EXISTS saved_routes (
   name             TEXT NOT NULL,
   route_data       JSONB NOT NULL,
   distance_km      DOUBLE PRECISION,
-  duration_seconds INTEGER,
+  duration_seconds DOUBLE PRECISION,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Valhalla returnerer tider som decimaltal (fx 1725.089 sekunder).
+-- Tidligere blev kolonnen oprettet som INTEGER, hvilket fik INSERT til at fejle.
+-- ALTER gør rettelsen idempotent for eksisterende installationer.
+ALTER TABLE saved_routes
+  ALTER COLUMN duration_seconds TYPE DOUBLE PRECISION
+  USING duration_seconds::DOUBLE PRECISION;
+
 CREATE INDEX IF NOT EXISTS idx_saved_routes_user_created
   ON saved_routes(user_id, created_at DESC);
 `
