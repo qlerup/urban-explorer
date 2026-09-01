@@ -4,22 +4,29 @@ import { getSession } from '@/lib/auth'
 import { getPinsForUser } from '@/lib/pins'
 import { getCategoriesForUser, getCategoriesSharedWithUser } from '@/lib/categories'
 import { getMaptilerKey, getMapProvider } from '@/lib/settings'
+import { getSavedRouteForUser } from '@/lib/savedRoutes'
 import RoutePlannerMap from '@/components/RoutePlannerMap'
 
 export const dynamic = 'force-dynamic'
 
 const PLACEHOLDER_KEY = 'indsaet_din_maptiler_key'
 
-export default async function RoutePlannerPage() {
+export default async function RoutePlannerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ rute?: string }>
+}) {
   const session = await getSession()
   if (!session) redirect('/login')
 
-  const [maptilerKey, mapProvider, pins, categories, sharedCategories] = await Promise.all([
+  const { rute } = await searchParams
+  const [maptilerKey, mapProvider, pins, categories, sharedCategories, savedRoute] = await Promise.all([
     getMaptilerKey(),
     getMapProvider(),
     getPinsForUser(session.userId),
     getCategoriesForUser(session.userId),
     getCategoriesSharedWithUser(session.userId),
+    rute ? getSavedRouteForUser(session.userId, rute) : Promise.resolve(null),
   ])
 
   if (mapProvider === 'maptiler' && (!maptilerKey || maptilerKey === PLACEHOLDER_KEY)) {
@@ -46,6 +53,11 @@ export default async function RoutePlannerPage() {
       geodanmarkAvailable={false}
       initialPins={pins}
       categories={[...categories, ...sharedCategories]}
+      initialSavedRoute={savedRoute ? {
+        id: savedRoute.id,
+        name: savedRoute.name,
+        routeData: savedRoute.routeData,
+      } : null}
     />
   )
 }
