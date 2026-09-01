@@ -263,33 +263,56 @@ export async function ensureManagedLocalUser(
   const emailHash = hashEmail(email)
   const legacyEmailHash = hashEmail(managedEmail(username))
 
-  const existing = await pool.query(
-    `SELECT id FROM users
-     WHERE fjordhub_user_id = $1 OR email_hash = $2 OR email_hash = $3
-     ORDER BY (fjordhub_user_id = $1) DESC, (email_hash = $2) DESC
-     LIMIT 1`,
-    [hubUserId, emailHash, legacyEmailHash]
-  )
-  if (existing.rows[0]) {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+    // Startup sync and login can otherwise reconcile the same user at once.
+    await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [hubUserId])
+
+    const existing = await client.query<{ id: string }>(
+      `SELECT id FROM users
+       WHERE fjordhub_user_id = $1 OR email_hash = $2 OR email_hash = $3
+       ORDER BY (email_hash = $2) DESC, (fjordhub_user_id = $1) DESC, (email_hash = $3) DESC
+       FOR UPDATE`,
+      [hubUserId, emailHash, legacyEmailHash]
+    )
+    if (existing.rows[0]) {
+      const targetId = existing.rows[0].id
+      // Older releases could create both an email user and a
+      // username@fjordhub.local user. Detach a duplicate hub identity before
+      // linking the preferred email row, avoiding the unique-key failure that
+      // made both SSO and password login return a generic server error.
+      await client.query(
+        `UPDATE users SET fjordhub_user_id = NULL, updated_at = NOW()
+         WHERE fjordhub_user_id = $1 AND id <> $2`,
+        [hubUserId, targetId]
+      )
     // Synkronisér navn, email og rolle. En gammel @fjordhub.local-identitet
     // opgraderes på samme række, så brugerens pins og delinger bevares.
-    await pool.query(
-      `UPDATE users SET first_name = $1, email = $2, email_hash = $3, is_admin = $4,
-         fjordhub_user_id = $5,
-         last_login_at = CASE WHEN $6 THEN NOW() ELSE last_login_at END,
-         updated_at = NOW()
-       WHERE id = $7`,
-      [encrypt(firstName), encrypt(email), emailHash, isAdmin, hubUserId, recordLogin, existing.rows[0].id]
-    )
-    return { id: existing.rows[0].id, isAdmin }
-  }
+      await client.query(
+        `UPDATE users SET first_name = $1, email = $2, email_hash = $3, is_admin = $4,
+           fjordhub_user_id = $5,
+           last_login_at = CASE WHEN $6 THEN NOW() ELSE last_login_at END,
+           updated_at = NOW()
+         WHERE id = $7`,
+        [encrypt(firstName), encrypt(email), emailHash, isAdmin, hubUserId, recordLogin, targetId]
+      )
+      await client.query('COMMIT')
+      return { id: targetId, isAdmin }
+    }
 
-  const created = await pool.query(
-    `INSERT INTO users (first_name, email, email_hash, password_hash, is_admin, must_change_password, fjordhub_user_id, last_login_at)
-     VALUES ($1, $2, $3, $4, $5, FALSE, $6, CASE WHEN $7 THEN NOW() ELSE NULL END)
-     ON CONFLICT (email_hash) DO UPDATE SET email_hash = EXCLUDED.email_hash
-     RETURNING id`,
-    [encrypt(firstName), encrypt(email), emailHash, MANAGED_PASSWORD_HASH, isAdmin, hubUserId, recordLogin]
-  )
-  return { id: created.rows[0].id, isAdmin }
+    const created = await client.query(
+      `INSERT INTO users (first_name, email, email_hash, password_hash, is_admin, must_change_password, fjordhub_user_id, last_login_at)
+       VALUES ($1, $2, $3, $4, $5, FALSE, $6, CASE WHEN $7 THEN NOW() ELSE NULL END)
+       RETURNING id`,
+      [encrypt(firstName), encrypt(email), emailHash, MANAGED_PASSWORD_HASH, isAdmin, hubUserId, recordLogin]
+    )
+    await client.query('COMMIT')
+    return { id: created.rows[0].id, isAdmin }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
 }
