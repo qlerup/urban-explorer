@@ -10,9 +10,27 @@ const SKRAAFOTO_SEARCH_URL = 'https://api.dataforsyningen.dk/rest/skraafoto_api/
 type SkraafotoDirection = 'north' | 'south' | 'east' | 'west'
 const VALID_DIRECTIONS: SkraafotoDirection[] = ['north', 'south', 'east', 'west']
 
+interface SkraafotoInteriorOrientation {
+  focal_length?: number
+  pixel_spacing?: number[]
+  principal_point_offset?: number[]
+  sensor_array_dimensions?: number[]
+}
+
+interface StacItemProperties {
+  direction?: string
+  datetime?: string
+  'pers:omega'?: number
+  'pers:phi'?: number
+  'pers:kappa'?: number
+  'pers:perspective_center'?: number[]
+  'pers:crs'?: number
+  'pers:interior_orientation'?: SkraafotoInteriorOrientation
+}
+
 interface StacItem {
   id: string
-  properties?: { direction?: string; datetime?: string }
+  properties?: StacItemProperties
   assets?: { thumbnail?: { href?: string }; data?: { href?: string } }
 }
 
@@ -57,15 +75,24 @@ export async function GET(request: NextRequest) {
       .filter(item => VALID_DIRECTIONS.includes(item.properties?.direction as SkraafotoDirection))
       .filter(item => item.assets?.data?.href && item.assets?.thumbnail?.href)
       .map(item => {
-        const datetime = item.properties!.datetime ?? ''
+        const properties = item.properties ?? {}
+        const datetime = properties.datetime ?? ''
         const year = datetime ? new Date(datetime).getUTCFullYear() : 0
         return {
           id: item.id,
-          direction: item.properties!.direction as SkraafotoDirection,
+          direction: properties.direction as SkraafotoDirection,
           year,
           datetime,
           thumbnailUrl: `/api/skraafoto/thumbnail?url=${encodeUpstreamUrl(item.assets!.thumbnail!.href!)}`,
           cogUrl: item.assets!.data!.href!,
+          camera: {
+            omega: properties['pers:omega'],
+            phi: properties['pers:phi'],
+            kappa: properties['pers:kappa'],
+            perspectiveCenter: properties['pers:perspective_center'],
+            crs: properties['pers:crs'],
+            interiorOrientation: properties['pers:interior_orientation'],
+          },
         }
       })
       .sort((a, b) => (a.datetime < b.datetime ? 1 : a.datetime > b.datetime ? -1 : 0))
