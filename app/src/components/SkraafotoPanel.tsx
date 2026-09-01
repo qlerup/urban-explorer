@@ -3,8 +3,25 @@
 import { useEffect, useRef, useState } from 'react'
 import type OlMap from 'ol/Map.js'
 import { encodeUpstreamUrl } from '@/lib/skraafoto'
+import { wgs84ToUtm32 } from '@/lib/geo'
 
 type Direction = 'north' | 'south' | 'east' | 'west'
+
+interface InteriorOrientation {
+  focal_length?: number
+  pixel_spacing?: number[]
+  principal_point_offset?: number[]
+  sensor_array_dimensions?: number[]
+}
+
+interface CameraMetadata {
+  omega?: number
+  phi?: number
+  kappa?: number
+  perspectiveCenter?: number[]
+  crs?: number
+  interiorOrientation?: InteriorOrientation
+}
 
 interface SkraafotoPhoto {
   id: string
@@ -13,12 +30,17 @@ interface SkraafotoPhoto {
   datetime: string
   thumbnailUrl: string
   cogUrl: string
+  camera?: CameraMetadata
 }
 
 interface Props {
   lat: number
   lng: number
   onClose: () => void
+}
+
+type UrbanExplorerWindow = Window & {
+  __urbanExplorerMapZoom?: number
 }
 
 const DIRECTION_LABELS: Record<Direction, string> = {
@@ -29,6 +51,85 @@ const DIRECTION_LABELS: Record<Direction, string> = {
 }
 
 const DIRECTION_ORDER: Direction[] = ['north', 'east', 'south', 'west']
+const MAP_TO_SKRAAFOTO_ZOOM_DIFFERENCE = 12
+const DEFAULT_SKRAAFOTO_ZOOM = 4
+
+function radians(degrees: number): number {
+  return degrees * (Math.PI / 180)
+}
+
+// Samme fotogrammetriske world -> image-beregning som Dataforsyningens officielle
+// @dataforsyningen/saul getImageXY. Skråfotoets metadata er i EPSG:25832.
+function getImageCoordinate(photo: SkraafotoPhoto, easting: number, northing: number, elevation = 0): [number, number] | null {
+  const camera = photo.camera
+  const interior = camera?.interiorOrientation
+  const center = camera?.perspectiveCenter
+  const focalLength = interior?.focal_length
+  const pixelSpacing = interior?.pixel_spacing?.[0]
+  const principalPoint = interior?.principal_point_offset
+  const dimensions = interior?.sensor_array_dimensions
+  const omega = camera?.omega
+  const phi = camera?.phi
+  const kappa = camera?.kappa
+
+  if (
+    camera?.crs !== 25832 ||
+    !center || center.length < 3 ||
+    !principalPoint || principalPoint.length < 2 ||
+    !dimensions || dimensions.length < 2 ||
+    !Number.isFinite(focalLength) ||
+    !Number.isFinite(pixelSpacing) ||
+    !pixelSpacing ||
+    !Number.isFinite(omega) ||
+    !Number.isFinite(phi) ||
+    !Number.isFinite(kappa)
+  ) {
+    return null
+  }
+
+  const xx0 = principalPoint[0]
+  const yy0 = principalPoint[1]
+  const c = -focalLength!
+  const dimX = dimensions[0] * pixelSpacing / 2 * -1
+  const dimY = dimensions[1] * pixelSpacing / 2 * -1
+  const [x0, y0, z0] = center
+
+  const o = radians(omega!)
+  const p = radians(phi!)
+  const k = radians(kappa!)
+
+  const d11 = Math.cos(p) * Math.cos(k)
+  const d12 = -Math.cos(p) * Math.sin(k)
+  const d13 = Math.sin(p)
+  const d21 = Math.cos(o) * Math.sin(k) + Math.sin(o) * Math.sin(p) * Math.cos(k)
+  const d22 = Math.cos(o) * Math.cos(k) - Math.sin(o) * Math.sin(p) * Math.sin(k)
+  const d23 = -Math.sin(o) * Math.cos(p)
+  const d31 = Math.sin(o) * Math.sin(k) - Math.cos(o) * Math.sin(p) * Math.cos(k)
+  const d32 = Math.sin(o) * Math.cos(k) + Math.cos(o) * Math.sin(p) * Math.sin(k)
+  const d33 = Math.cos(o) * Math.cos(p)
+
+  const dx = easting - x0
+  const dy = northing - y0
+  const dz = elevation - z0
+  const denominator = d13 * dx + d23 * dy + d33 * dz
+  if (Math.abs(denominator) < 1e-9) return null
+
+  const xDot = -c * ((d11 * dx + d21 * dy + d31 * dz) / denominator)
+  const yDot = -c * ((d12 * dx + d22 * dy + d32 * dz) / denominator)
+  const col = ((xDot - xx0) + dimX) * -1 / pixelSpacing
+  const row = ((yDot - yy0) + dimY) * -1 / pixelSpacing
+
+  if (!Number.isFinite(col) || !Number.isFinite(row)) return null
+  return [Math.round(col), Math.round(row)]
+}
+
+function coordinateInsideExtent(coordinate: [number, number], extent?: number[]): boolean {
+  if (!extent || extent.length < 4) return true
+  return coordinate[0] >= extent[0]
+    && coordinate[0] <= extent[2]
+    && coordinate[1] >= extent[1]
+    && coordinate[1] <= extent[3]
+}
 
 export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
   const [loading, setLoading] = useState(true)
@@ -144,10 +245,24 @@ export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
           resolutions = [...baseResolutions, last / 2, last / 4]
         }
 
+        const { easting, northing } = wgs84ToUtm32(lat, lng)
+        const projectedPoint = getImageCoordinate(activePhoto, easting, northing)
+        const inheritedMapZoom = (window as UrbanExplorerWindow).__urbanExplorerMapZoom
+        const requestedZoom = Number.isFinite(inheritedMapZoom)
+          ? inheritedMapZoom! - MAP_TO_SKRAAFOTO_ZOOM_DIFFERENCE
+          : DEFAULT_SKRAAFOTO_ZOOM
+        const maxZoom = resolutions ? Math.max(0, resolutions.length - 1) : 10
+        const inheritedZoom = Math.min(maxZoom, Math.max(1, requestedZoom))
+        const inheritedCenter = projectedPoint && coordinateInsideExtent(projectedPoint, sourceView.extent)
+          ? projectedPoint
+          : sourceView.center
+
         const view = new View({
           ...sourceView,
           projection,
           resolutions,
+          center: inheritedCenter,
+          zoom: inheritedZoom,
         })
 
         const map = new Map({
@@ -158,6 +273,11 @@ export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
         })
 
         mapRef.current = map
+        // OpenLayers kan måle modalens størrelse et øjeblik før layoutet er færdigt.
+        // Genberegn efter første paint, uden at ændre center eller zoom.
+        requestAnimationFrame(() => {
+          if (!cancelled) map.updateSize()
+        })
         setViewerLoading(false)
       } catch (err) {
         if (!cancelled) {
@@ -176,7 +296,7 @@ export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
         mapRef.current = null
       }
     }
-  }, [activePhoto?.id])
+  }, [activePhoto?.id, lat, lng])
 
   function toggleFullscreen() {
     if (!panelRef.current) return
