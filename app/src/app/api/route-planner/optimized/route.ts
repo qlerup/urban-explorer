@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 
 const DEFAULT_VALHALLA_URL = 'https://valhalla1.openstreetmap.de'
 const MAX_STOPS = 50
-const VALHALLA_TIMEOUT_MS = 12_000
+const VALHALLA_TIMEOUT_MS = 60_000
 const SNAP_RADIUS_METERS = 5000
 const MINIMUM_REACHABILITY = 1
 
@@ -148,16 +148,11 @@ export async function POST(request: NextRequest) {
 
   const stops = body.stops as InputStop[]
   const payload = {
-    // Urban Explorer-pins ligger ofte inde på grunde, marker, skove og
-    // fabriksområder. Den tilhørende Valhalla-service hæver serverens normale
-    // max-radius fra 200 m til 5 km, så denne radius rent faktisk accepteres.
     locations: stops.map(valhallaLocation),
     costing: 'auto',
     directions_options: { units: 'kilometers' },
   }
 
-  // Valhallas optimized_route kræver mindst fire locations. Med 2-3 stops
-  // bruges almindelig bilrouting i den valgte rækkefølge.
   const action: ValhallaAction = stops.length >= 4 ? 'optimized_route' : 'route'
 
   try {
@@ -169,7 +164,7 @@ export async function POST(request: NextRequest) {
       data = JSON.parse(text) as ValhallaResponse
     } catch {
       return NextResponse.json(
-        { error: 'Rute-serveren gav et ugyldigt svar. Den er muligvis stadig ved at starte.' },
+        { error: 'Rute-serveren gav et ugyldigt svar.' },
         { status: 503 }
       )
     }
@@ -226,13 +221,13 @@ export async function POST(request: NextRequest) {
     const name = error instanceof Error ? error.name : ''
     if (name === 'TimeoutError' || name === 'AbortError') {
       return NextResponse.json(
-        { error: 'Rute-serveren svarer ikke endnu. Valhalla er muligvis stadig ved at bygge kortdata.' },
-        { status: 503 }
+        { error: 'Ruteoptimeringen tog længere end 60 sekunder. Prøv igen med færre pins.' },
+        { status: 504 }
       )
     }
 
     return NextResponse.json(
-      { error: 'Rute-serveren kunne ikke kontaktes. Tjek at Valhalla-containeren kører og er færdig med at starte.' },
+      { error: 'Rute-serveren kunne ikke kontaktes. Tjek at Valhalla-containeren kører.' },
       { status: 503 }
     )
   }
