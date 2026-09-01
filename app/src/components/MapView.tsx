@@ -110,6 +110,11 @@ const GEODANMARK_ATTRIBUTION =
 const ESRI_HYBRID_LABELS_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
 
+// World_Boundaries_and_Places viser kun stednavne/grænser, ikke vejnavne - det kræver
+// dette separate transport-lag oveni (samme kombination som Esris "Imagery Hybrid").
+const ESRI_HYBRID_ROADS_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
+
 function mapLayerAttribution(layerId: MapLayerId, provider: MapProvider): string {
   if (layerId === 'geodanmark-ortofoto') return GEODANMARK_ATTRIBUTION
   return provider === 'esri' ? ESRI_ATTRIBUTION : MAP_ATTRIBUTION
@@ -158,8 +163,9 @@ function fillTileTemplate(template: string, tile: MapLayerPreviewTile): string {
 function mapLayerPreviewUrl(layerId: MapLayerId, provider: MapProvider, maptilerKey: string, tile: MapLayerPreviewTile): string {
   const baseUrl = fillTileTemplate(mapLayerTileUrl(layerId, provider, maptilerKey), tile)
   if (provider === 'esri' && layerId === 'hybrid-v4') {
-    const overlayUrl = fillTileTemplate(ESRI_HYBRID_LABELS_URL, tile)
-    return `url("${overlayUrl}"), url("${baseUrl}")`
+    const labelsUrl = fillTileTemplate(ESRI_HYBRID_LABELS_URL, tile)
+    const roadsUrl = fillTileTemplate(ESRI_HYBRID_ROADS_URL, tile)
+    return `url("${labelsUrl}"), url("${roadsUrl}"), url("${baseUrl}")`
   }
   return `url("${baseUrl}")`
 }
@@ -344,6 +350,7 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
   const markerClusterGroupRef = useRef<Leaflet.MarkerClusterGroup | null>(null)
   const baseLayerRef = useRef<Leaflet.TileLayer | null>(null)
   const hybridOverlayRef = useRef<Leaflet.TileLayer | null>(null)
+  const hybridRoadsOverlayRef = useRef<Leaflet.TileLayer | null>(null)
   const searchMarkerRef = useRef<Leaflet.CircleMarker | null>(null)
   const locateMarkerRef = useRef<Leaflet.Marker | null>(null)
   const lastPointerTypeRef = useRef<string>('mouse')
@@ -853,6 +860,12 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
       }).addTo(map)
 
       if (mapProvider === 'esri' && mapLayerId === 'hybrid-v4') {
+        hybridRoadsOverlayRef.current = L.tileLayer(ESRI_HYBRID_ROADS_URL, {
+          tileSize: 256,
+          maxNativeZoom: ESRI_MAX_NATIVE_ZOOM,
+          maxZoom: MAP_MAX_ZOOM,
+          crossOrigin: true,
+        }).addTo(map)
         hybridOverlayRef.current = L.tileLayer(ESRI_HYBRID_LABELS_URL, {
           tileSize: 256,
           maxNativeZoom: ESRI_MAX_NATIVE_ZOOM,
@@ -947,6 +960,8 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
       baseLayerRef.current = null
       hybridOverlayRef.current?.remove()
       hybridOverlayRef.current = null
+      hybridRoadsOverlayRef.current?.remove()
+      hybridRoadsOverlayRef.current = null
       markerClusterGroupRef.current?.remove()
       markerClusterGroupRef.current = null
       searchMarkerRef.current?.remove()
@@ -1022,7 +1037,15 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
 
     hybridOverlayRef.current?.remove()
     hybridOverlayRef.current = null
+    hybridRoadsOverlayRef.current?.remove()
+    hybridRoadsOverlayRef.current = null
     if (mapProvider === 'esri' && mapLayerId === 'hybrid-v4') {
+      hybridRoadsOverlayRef.current = L.tileLayer(ESRI_HYBRID_ROADS_URL, {
+        tileSize: 256,
+        maxNativeZoom: ESRI_MAX_NATIVE_ZOOM,
+        maxZoom: MAP_MAX_ZOOM,
+        crossOrigin: true,
+      }).addTo(map)
       hybridOverlayRef.current = L.tileLayer(ESRI_HYBRID_LABELS_URL, {
         tileSize: 256,
         maxNativeZoom: ESRI_MAX_NATIVE_ZOOM,
