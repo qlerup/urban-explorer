@@ -9,6 +9,8 @@ const VALHALLA_TIMEOUT_MS = 12_000
 const SNAP_RADIUS_METERS = 5000
 const MINIMUM_REACHABILITY = 1
 
+type ValhallaAction = 'route' | 'optimized_route' | 'locate'
+
 interface InputStop {
   id: string
   lat: number
@@ -39,6 +41,14 @@ interface ValhallaResponse {
   }
 }
 
+interface LocateEdge {
+  distance?: number
+}
+
+interface LocateResult {
+  edges?: LocateEdge[]
+}
+
 function isValidStop(value: unknown): value is InputStop {
   if (!value || typeof value !== 'object') return false
   const stop = value as Partial<InputStop>
@@ -52,7 +62,18 @@ function isValidStop(value: unknown): value is InputStop {
     && stop.lng! <= 180
 }
 
-async function requestValhalla(action: 'route' | 'optimized_route', payload: object): Promise<Response> {
+function valhallaLocation(stop: InputStop) {
+  return {
+    lat: stop.lat,
+    lon: stop.lng,
+    type: 'break',
+    radius: SNAP_RADIUS_METERS,
+    minimum_reachability: MINIMUM_REACHABILITY,
+    rank_candidates: true,
+  }
+}
+
+async function requestValhalla(action: ValhallaAction, payload: object): Promise<Response> {
   const baseUrl = (process.env.VALHALLA_URL || DEFAULT_VALHALLA_URL).replace(/\/$/, '')
   const endpoint = `${baseUrl}/${action}`
 
@@ -67,7 +88,7 @@ async function requestValhalla(action: 'route' | 'optimized_route', payload: obj
     body: JSON.stringify(payload),
   })
 
-  // Nogle hosted Valhalla-installationer eksponerer optimized_route som GET-only.
+  // Nogle hosted Valhalla-installationer eksponerer enkelte actions som GET-only.
   if (response.status === 404 || response.status === 405) {
     const url = new URL(endpoint)
     url.searchParams.set('json', JSON.stringify(payload))
@@ -79,6 +100,30 @@ async function requestValhalla(action: 'route' | 'optimized_route', payload: obj
   }
 
   return response
+}
+
+async function findUnsnappableStopIndex(stops: InputStop[]): Promise<number | null> {
+  for (let index = 0; index < stops.length; index += 1) {
+    const response = await requestValhalla('locate', {
+      locations: [valhallaLocation(stops[index])],
+      costing: 'auto',
+      verbose: false,
+    })
+
+    if (!response.ok) return index
+
+    let data: unknown
+    try {
+      data = JSON.parse(await response.text())
+    } catch {
+      return index
+    }
+
+    const result = Array.isArray(data) ? data[0] as LocateResult | undefined : undefined
+    if (!result || !Array.isArray(result.edges) || result.edges.length === 0) return index
+  }
+
+  return null
 }
 
 export async function POST(request: NextRequest) {
@@ -103,24 +148,17 @@ export async function POST(request: NextRequest) {
 
   const stops = body.stops as InputStop[]
   const payload = {
-    // Urban Explorer-pins ligger ofte langt inde på grunde, marker, skove,
-    // fabriksområder osv. Tillad derfor en stor søgeradius til nærmeste
-    // brugbare bilvej i stedet for at kræve, at pinnen ligger tæt på vejnettet.
-    locations: stops.map(stop => ({
-      lat: stop.lat,
-      lon: stop.lng,
-      type: 'break',
-      radius: SNAP_RADIUS_METERS,
-      minimum_reachability: MINIMUM_REACHABILITY,
-      rank_candidates: true,
-    })),
+    // Urban Explorer-pins ligger ofte inde på grunde, marker, skove og
+    // fabriksområder. Den tilhørende Valhalla-service hæver serverens normale
+    // max-radius fra 200 m til 5 km, så denne radius rent faktisk accepteres.
+    locations: stops.map(valhallaLocation),
     costing: 'auto',
     directions_options: { units: 'kilometers' },
   }
 
   // Valhallas optimized_route kræver mindst fire locations. Med 2-3 stops
   // bruges almindelig bilrouting i den valgte rækkefølge.
-  const action = stops.length >= 4 ? 'optimized_route' : 'route'
+  const action: ValhallaAction = stops.length >= 4 ? 'optimized_route' : 'route'
 
   try {
     const upstream = await requestValhalla(action, payload)
@@ -137,14 +175,26 @@ export async function POST(request: NextRequest) {
     }
 
     if (!upstream.ok || !data.trip) {
-      if (data.error_code === 171 || data.error === 'No suitable edges near location') {
+      if (data.error_code === 171 || data.error?.includes('No suitable edges near location')) {
+        const failedIndex = await findUnsnappableStopIndex(stops)
+        if (failedIndex !== null) {
+          return NextResponse.json(
+            {
+              error: `Pin nr. ${failedIndex + 1} kunne ikke forbindes til en kørbar vej inden for 5 km.`,
+              failedStopId: stops[failedIndex].id,
+              failedStopIndex: failedIndex,
+            },
+            { status: 422 }
+          )
+        }
+
         return NextResponse.json(
-          { error: 'Et af de valgte pins kunne ikke forbindes til en kørbar vej inden for 5 km.' },
+          { error: 'Valhalla kunne finde veje ved alle pins, men kunne ikke forbinde dem til en samlet bilrute.' },
           { status: 422 }
         )
       }
 
-      if (data.error === 'No data found for location') {
+      if (data.error?.includes('No data found for location')) {
         return NextResponse.json(
           { error: 'Et af de valgte pins ligger uden for de routing-kortdata, der er installeret.' },
           { status: 422 }
