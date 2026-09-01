@@ -70,8 +70,8 @@ function decodePolyline6(encoded: string): [number, number][] {
 }
 
 function formatDuration(seconds: number | null): string | null {
-  if (!Number.isFinite(seconds)) return null
-  const minutes = Math.round((seconds ?? 0) / 60)
+  if (seconds === null || !Number.isFinite(seconds)) return null
+  const minutes = Math.round(seconds / 60)
   if (minutes < 60) return `${minutes} min.`
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
@@ -218,8 +218,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
       })
 
       if (selecting) {
-        marker.on('click', event => {
-          L.DomEvent.stopPropagation(event)
+        marker.on('click', () => {
           setRouteResult(null)
           setRouteError(null)
           setSelectedIds(previous => {
@@ -335,6 +334,9 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
   }
 
   const duration = formatDuration(routeResult?.durationSeconds ?? null)
+  const distanceLabel = routeResult?.distanceKm !== null && routeResult?.distanceKm !== undefined && Number.isFinite(routeResult.distanceKm)
+    ? `${routeResult.distanceKm.toFixed(1)} km`
+    : null
 
   return (
     <div className="relative w-full h-[calc(100dvh-4rem)] min-h-[520px] overflow-hidden bg-void-950">
@@ -407,7 +409,7 @@ export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAv
           <p className="text-sm font-semibold text-gray-100">Optimeret kørerute</p>
           <p className="mt-0.5 text-[11px] text-gray-400">
             {selectedIds.length} stop
-            {Number.isFinite(routeResult.distanceKm) ? ` · ${routeResult.distanceKm!.toFixed(1)} km` : ''}
+            {distanceLabel ? ` · ${distanceLabel}` : ''}
             {duration ? ` · ${duration}` : ''}
           </p>
         </div>
