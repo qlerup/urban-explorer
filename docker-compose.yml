@@ -17,14 +17,15 @@ services:
       retries: 10
 
   valhalla:
-    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    build:
+      context: ./valhalla
+      dockerfile: Dockerfile
     container_name: urban-explorer-valhalla
     restart: unless-stopped
     environment:
       # Hent og byg kun Danmark. Første start bygger routing-grafen; derefter
       # genbruges data fra valhalla_data-volume.
       tile_urls: https://download.geofabrik.de/europe/denmark-latest.osm.pbf
-      serve_tiles: "True"
       use_tiles_ignore_pbf: "True"
       force_rebuild: "False"
       force_rebuild_elevation: "False"
@@ -33,6 +34,9 @@ services:
       build_time_zones: "True"
       build_tar: "True"
       server_threads: "2"
+      # Valhalla har normalt service_limits.max_radius=200 meter. Urban Explorer
+      # har ofte pins inde på grunde/marker, så tillad snapping op til 5 km.
+      VALHALLA_MAX_RADIUS_METERS: "5000"
     volumes:
       - valhalla_data:/custom_files
 
