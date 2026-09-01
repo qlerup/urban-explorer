@@ -1,9 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState, type ComponentProps } from 'react'
+import type * as Leaflet from 'leaflet'
 import MapView from './MapView'
 
 type Props = ComponentProps<typeof MapView>
+
+type UrbanExplorerWindow = Window & {
+  __urbanExplorerMapZoom?: number
+  __urbanExplorerLeafletZoomHookInstalled?: boolean
+}
 
 export default function MapViewLoader(props: Props) {
   const [ready, setReady] = useState(false)
@@ -17,7 +23,25 @@ export default function MapViewLoader(props: Props) {
       // MarkerCluster extends Leaflet at module evaluation time. On a cold load,
       // loading both chunks in parallel can race. Load Leaflet first so the
       // plugin always sees an initialized Leaflet module.
-      await import('leaflet')
+      const leafletModule = await import('leaflet')
+      const L = (leafletModule as unknown as { default?: typeof Leaflet }).default
+        ?? (leafletModule as unknown as typeof Leaflet)
+
+      // Keep the current Leaflet zoom available to the skraafoto viewer. The
+      // skraafoto COG uses a local image pyramid, so its equivalent zoom is the
+      // Leaflet zoom minus Dataforsyningen's documented 12-level difference.
+      const browserWindow = window as UrbanExplorerWindow
+      if (!browserWindow.__urbanExplorerLeafletZoomHookInstalled) {
+        L.Map.addInitHook(function (this: Leaflet.Map) {
+          const syncZoom = () => {
+            browserWindow.__urbanExplorerMapZoom = this.getZoom()
+          }
+          this.on('zoomend moveend', syncZoom)
+          this.whenReady(syncZoom)
+        })
+        browserWindow.__urbanExplorerLeafletZoomHookInstalled = true
+      }
+
       await import('leaflet.markercluster')
 
       if (cancelled) return
