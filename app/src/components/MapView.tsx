@@ -949,6 +949,45 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
   }, [maptilerKey, mapProvider])
 
   useEffect(() => {
+    const map = mapRef.current
+    const container = containerRef.current
+    if (!map || !container || !mapReady) return
+
+    let frameId: number | null = null
+    const refreshSize = () => {
+      if (frameId !== null) cancelAnimationFrame(frameId)
+      frameId = requestAnimationFrame(() => {
+        frameId = null
+        map.invalidateSize({ animate: false, pan: false })
+      })
+    }
+
+    // Leaflet can initialize before the dashboard/new tab has its final size.
+    // Observe the actual map element instead of relying on a later tab switch
+    // or window resize to make the first tiles appear.
+    const resizeObserver = new ResizeObserver(refreshSize)
+    resizeObserver.observe(container)
+    const handleVisibility = () => {
+      if (!document.hidden) refreshSize()
+    }
+    window.addEventListener('pageshow', refreshSize)
+    window.addEventListener('resize', refreshSize)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    // Two frames let the dashboard flex layout and mobile viewport settle.
+    const initialFrame = requestAnimationFrame(() => requestAnimationFrame(refreshSize))
+
+    return () => {
+      cancelAnimationFrame(initialFrame)
+      if (frameId !== null) cancelAnimationFrame(frameId)
+      resizeObserver.disconnect()
+      window.removeEventListener('pageshow', refreshSize)
+      window.removeEventListener('resize', refreshSize)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [mapReady])
+
+  useEffect(() => {
     measureModeRef.current = measureMode
   }, [measureMode])
 
