@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type * as Leaflet from 'leaflet'
+import type OlMap from 'ol/Map.js'
 import { encodeUpstreamUrl } from '@/lib/skraafoto'
 
 type Direction = 'north' | 'south' | 'east' | 'west'
@@ -13,14 +13,6 @@ interface SkraafotoPhoto {
   datetime: string
   thumbnailUrl: string
   cogUrl: string
-}
-
-interface CogInfo {
-  width: number
-  height: number
-  tile_width: number
-  tile_height: number
-  overviews: number
 }
 
 interface Props {
@@ -49,14 +41,13 @@ export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
 
   const containerRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<Leaflet.Map | null>(null)
-  const leafletRef = useRef<typeof Leaflet | null>(null)
-  const tileLayerRef = useRef<Leaflet.TileLayer | null>(null)
+  const mapRef = useRef<OlMap | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
+
     fetch(`/api/skraafoto/search?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`)
       .then(async res => {
         const data = await res.json()
@@ -80,6 +71,7 @@ export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
+
     return () => { cancelled = true }
   }, [lat, lng])
 
@@ -97,75 +89,93 @@ export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
 
   useEffect(() => {
     let cancelled = false
-    tileLayerRef.current?.remove()
-    tileLayerRef.current = null
-    mapRef.current?.remove()
-    mapRef.current = null
+
+    if (mapRef.current) {
+      mapRef.current.setTarget(undefined)
+      mapRef.current = null
+    }
+
     if (!activePhoto || !containerRef.current) return
 
     setViewerLoading(true)
     setViewerError(null)
 
-    fetch(`/api/skraafoto/info?url=${encodeUpstreamUrl(activePhoto.cogUrl)}`)
-      .then(async res => {
-        const text = await res.text()
-        let data: { error?: string } & Partial<CogInfo>
-        try {
-          data = JSON.parse(text)
-        } catch {
-          // Midlertidig diagnostik: svaret var slet ikke JSON (fx en HTML-fejlside fra en proxy).
-          throw new Error(`Uventet svar (status ${res.status}): ${text.slice(0, 300)}`)
-        }
-        if (!res.ok) throw new Error(data.error || 'Kunne ikke hente billedinfo')
-        return data as CogInfo
-      })
-      .then(async info => {
-        if (cancelled || !containerRef.current) return
-        const leafletModule = await import('leaflet')
-        const L = (leafletModule as unknown as { default?: typeof Leaflet }).default ?? (leafletModule as unknown as typeof Leaflet)
-        if (cancelled || !containerRef.current) return
-        leafletRef.current = L
+    const load = async () => {
+      try {
+        const [
+          { default: Map },
+          { default: View },
+          { default: WebGLTile },
+          { default: GeoTIFF },
+          { default: Projection },
+          { defaults: defaultControls },
+        ] = await Promise.all([
+          import('ol/Map.js'),
+          import('ol/View.js'),
+          import('ol/layer/WebGLTile.js'),
+          import('ol/source/GeoTIFF.js'),
+          import('ol/proj/Projection.js'),
+          import('ol/control/defaults.js'),
+        ])
 
-        const maxZoom = Math.max(0, info.overviews)
-        const map = L.map(containerRef.current, {
-          crs: L.CRS.Simple,
-          minZoom: 0,
-          maxZoom,
-          attributionControl: false,
+        if (cancelled || !containerRef.current) return
+
+        const cogProxyUrl = `/api/skraafoto/cog?url=${encodeUpstreamUrl(activePhoto.cogUrl)}`
+        const source = new GeoTIFF({
+          convertToRGB: true,
+          transition: 0,
+          sources: [{ url: cogProxyUrl, bands: [1, 2, 3] }],
         })
-        const southWest = map.unproject([0, info.height], maxZoom)
-        const northEast = map.unproject([info.width, 0], maxZoom)
-        const bounds = L.latLngBounds(southWest, northEast)
-        map.setMaxBounds(bounds)
-        map.fitBounds(bounds)
 
-        const tileUrl = `/api/skraafoto/tiles/{z}/{x}/{y}?url=${encodeUpstreamUrl(activePhoto.cogUrl)}`
-        tileLayerRef.current = L.tileLayer(tileUrl, {
-          tileSize: info.tile_width,
-          minZoom: 0,
-          maxZoom,
-          noWrap: true,
-          bounds,
-        }).addTo(map)
+        const layer = new WebGLTile({ source, preload: 0 })
+        const sourceView = await source.getView()
+        if (cancelled || !containerRef.current) return
+
+        const projection = new Projection({
+          code: `skraafoto-${activePhoto.id}`,
+          units: 'pixels',
+          metersPerUnit: 1,
+        })
+
+        const baseResolutions = sourceView.resolutions ? Array.from(sourceView.resolutions) : undefined
+        let resolutions = baseResolutions
+        if (baseResolutions && baseResolutions.length > 0) {
+          const last = baseResolutions[baseResolutions.length - 1]
+          resolutions = [...baseResolutions, last / 2, last / 4]
+        }
+
+        const view = new View({
+          ...sourceView,
+          projection,
+          resolutions,
+        })
+
+        const map = new Map({
+          target: containerRef.current,
+          layers: [layer],
+          view,
+          controls: defaultControls({ attribution: false }),
+        })
 
         mapRef.current = map
         setViewerLoading(false)
-      })
-      .catch(err => {
+      } catch (err) {
         if (!cancelled) {
           setViewerError(err instanceof Error ? err.message : 'Kunne ikke hente skråfoto')
           setViewerLoading(false)
         }
-      })
+      }
+    }
+
+    void load()
 
     return () => {
       cancelled = true
-      tileLayerRef.current?.remove()
-      tileLayerRef.current = null
-      mapRef.current?.remove()
-      mapRef.current = null
+      if (mapRef.current) {
+        mapRef.current.setTarget(undefined)
+        mapRef.current = null
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePhoto?.id])
 
   function toggleFullscreen() {
