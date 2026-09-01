@@ -107,7 +107,14 @@ export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
 
     fetch(`/api/skraafoto/info?url=${encodeURIComponent(activePhoto.cogUrl)}`)
       .then(async res => {
-        const data = await res.json()
+        const text = await res.text()
+        let data: { error?: string } & Partial<CogInfo>
+        try {
+          data = JSON.parse(text)
+        } catch {
+          // Midlertidig diagnostik: svaret var slet ikke JSON (fx en HTML-fejlside fra en proxy).
+          throw new Error(`Uventet svar (status ${res.status}): ${text.slice(0, 300)}`)
+        }
         if (!res.ok) throw new Error(data.error || 'Kunne ikke hente billedinfo')
         return data as CogInfo
       })
