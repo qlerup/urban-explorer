@@ -1,0 +1,453 @@
+'use client'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type * as Leaflet from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import type { Category, Pin, PinStatus } from '@/types/pin'
+import { PIN_STATUSES, PIN_STATUS_COLORS, PIN_STATUS_LABELS } from '@/types/pin'
+
+type MapProvider = 'maptiler' | 'esri'
+
+interface Props {
+  maptilerKey: string
+  mapProvider: MapProvider
+  geodanmarkAvailable: boolean
+  initialPins: Pin[]
+  categories: Category[]
+}
+
+interface RouteResult {
+  optimized: boolean
+  orderedStopIds: string[]
+  shapes: string[]
+  distanceKm: number | null
+  durationSeconds: number | null
+}
+
+type UrbanExplorerWindow = Window & {
+  __urbanExplorerMapZoom?: number
+  __urbanExplorerMapCenter?: [number, number]
+}
+
+const DEFAULT_CENTER: [number, number] = [55.5, 10.4]
+const DEFAULT_ZOOM = 7
+const NO_CATEGORY = '__none__'
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function decodePolyline6(encoded: string): [number, number][] {
+  const coordinates: [number, number][] = []
+  let index = 0
+  let lat = 0
+  let lng = 0
+
+  const decodeValue = () => {
+    let result = 0
+    let shift = 0
+    let byte = 0
+    do {
+      byte = encoded.charCodeAt(index++) - 63
+      result |= (byte & 0x1f) << shift
+      shift += 5
+    } while (byte >= 0x20 && index <= encoded.length)
+    return (result & 1) ? ~(result >> 1) : (result >> 1)
+  }
+
+  while (index < encoded.length) {
+    lat += decodeValue()
+    lng += decodeValue()
+    coordinates.push([lat / 1e6, lng / 1e6])
+  }
+
+  return coordinates
+}
+
+function formatDuration(seconds: number | null): string | null {
+  if (!Number.isFinite(seconds)) return null
+  const minutes = Math.round((seconds ?? 0) / 60)
+  if (minutes < 60) return `${minutes} min.`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest ? `${hours} t. ${rest} min.` : `${hours} t.`
+}
+
+function baseTileConfig(mapProvider: MapProvider, maptilerKey: string, geodanmarkAvailable: boolean) {
+  if (geodanmarkAvailable) {
+    return {
+      url: '/api/map-tiles/geodanmark/{z}/{x}/{y}',
+      attribution: '&copy; Klimadatastyrelsen / GeoDanmark',
+      maxNativeZoom: 20,
+    }
+  }
+
+  if (mapProvider === 'esri') {
+    return {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attribution: 'Tiles &copy; Esri',
+      maxNativeZoom: 19,
+    }
+  }
+
+  return {
+    url: `https://api.maptiler.com/maps/satellite-v4/256/{z}/{x}/{y}.jpg?key=${maptilerKey}`,
+    attribution: '&copy; MapTiler &copy; OpenStreetMap contributors',
+    maxNativeZoom: 20,
+  }
+}
+
+export default function RoutePlannerMap({ maptilerKey, mapProvider, geodanmarkAvailable, initialPins, categories }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<Leaflet.Map | null>(null)
+  const leafletRef = useRef<typeof Leaflet | null>(null)
+  const markerLayerRef = useRef<Leaflet.LayerGroup | null>(null)
+  const routeLayerRef = useRef<Leaflet.LayerGroup | null>(null)
+
+  const [mapReady, setMapReady] = useState(false)
+  const [selecting, setSelecting] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [routing, setRouting] = useState(false)
+  const [routeError, setRouteError] = useState<string | null>(null)
+  const [routeResult, setRouteResult] = useState<RouteResult | null>(null)
+  const [activeCategoryIds, setActiveCategoryIds] = useState<Set<string>>(
+    () => new Set([...categories.map(category => category.id), NO_CATEGORY])
+  )
+  const [activeStatuses, setActiveStatuses] = useState<Set<PinStatus>>(() => new Set(PIN_STATUSES))
+  const [activeRatings, setActiveRatings] = useState<Set<number>>(() => new Set([0, 1, 2, 3]))
+
+  const visiblePins = useMemo(() => initialPins.filter(pin => {
+    const categoryMatch = pin.categories.length > 0
+      ? pin.categories.some(category => activeCategoryIds.has(category.id))
+      : activeCategoryIds.has(NO_CATEGORY)
+    return categoryMatch && activeStatuses.has(pin.status) && activeRatings.has(pin.rating)
+  }), [initialPins, activeCategoryIds, activeStatuses, activeRatings])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const init = async () => {
+      const leafletModule = await import('leaflet')
+      const L = (leafletModule as unknown as { default?: typeof Leaflet }).default
+        ?? (leafletModule as unknown as typeof Leaflet)
+      if (cancelled || !containerRef.current) return
+
+      leafletRef.current = L
+      const browserWindow = window as UrbanExplorerWindow
+      const inheritedCenter = browserWindow.__urbanExplorerMapCenter ?? DEFAULT_CENTER
+      const inheritedZoom = browserWindow.__urbanExplorerMapZoom ?? DEFAULT_ZOOM
+
+      const map = L.map(containerRef.current, {
+        center: inheritedCenter,
+        zoom: inheritedZoom,
+        zoomControl: true,
+        maxZoom: 22,
+        doubleClickZoom: true,
+      })
+
+      const tiles = baseTileConfig(mapProvider, maptilerKey, geodanmarkAvailable)
+      L.tileLayer(tiles.url, {
+        attribution: tiles.attribution,
+        maxNativeZoom: tiles.maxNativeZoom,
+        maxZoom: 22,
+      }).addTo(map)
+
+      markerLayerRef.current = L.layerGroup().addTo(map)
+      routeLayerRef.current = L.layerGroup().addTo(map)
+
+      const syncView = () => {
+        const center = map.getCenter()
+        browserWindow.__urbanExplorerMapCenter = [center.lat, center.lng]
+        browserWindow.__urbanExplorerMapZoom = map.getZoom()
+      }
+      map.on('moveend zoomend', syncView)
+      syncView()
+
+      mapRef.current = map
+      setMapReady(true)
+      requestAnimationFrame(() => map.invalidateSize())
+    }
+
+    void init()
+
+    return () => {
+      cancelled = true
+      mapRef.current?.remove()
+      mapRef.current = null
+      markerLayerRef.current = null
+      routeLayerRef.current = null
+      leafletRef.current = null
+    }
+  }, [mapProvider, maptilerKey, geodanmarkAvailable])
+
+  useEffect(() => {
+    const L = leafletRef.current
+    const layer = markerLayerRef.current
+    if (!L || !layer || !mapReady) return
+
+    layer.clearLayers()
+
+    for (const pin of visiblePins) {
+      const selectedIndex = selectedIds.indexOf(pin.id)
+      const selected = selectedIndex >= 0
+      const statusColor = PIN_STATUS_COLORS[pin.status]
+      const iconContent = pin.icon.startsWith('/')
+        ? `<img src="${escapeHtml(pin.icon)}" alt="" style="width:28px;height:28px;display:block;" />`
+        : `<span style="font-size:24px;line-height:28px;">${escapeHtml(pin.icon)}</span>`
+      const badge = selected
+        ? `<span style="position:absolute;right:-8px;top:-8px;width:22px;height:22px;border-radius:999px;background:#d97706;color:white;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #111827;">${selectedIndex + 1}</span>`
+        : ''
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="position:relative;width:38px;height:38px;border-radius:999px;background:#111827;border:${selected ? '3px solid #f59e0b' : `2px solid ${statusColor}`};display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.55);">${iconContent}${badge}</div>`,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19],
+      })
+
+      const marker = L.marker([pin.latitude, pin.longitude], {
+        icon,
+        interactive: selecting,
+        keyboard: selecting,
+        riseOnHover: true,
+      })
+
+      if (selecting) {
+        marker.on('click', event => {
+          L.DomEvent.stopPropagation(event)
+          setRouteResult(null)
+          setRouteError(null)
+          setSelectedIds(previous => {
+            const existing = previous.indexOf(pin.id)
+            if (existing >= 0) return previous.filter(id => id !== pin.id)
+            return [...previous, pin.id]
+          })
+        })
+      }
+
+      marker.addTo(layer)
+    }
+  }, [mapReady, visiblePins, selecting, selectedIds])
+
+  useEffect(() => {
+    const L = leafletRef.current
+    const map = mapRef.current
+    const layer = routeLayerRef.current
+    if (!L || !map || !layer) return
+
+    layer.clearLayers()
+    if (!routeResult) return
+
+    const allPoints: [number, number][] = []
+    for (const shape of routeResult.shapes) {
+      const points = decodePolyline6(shape)
+      if (points.length < 2) continue
+      allPoints.push(...points)
+      L.polyline(points, {
+        color: '#f59e0b',
+        weight: 6,
+        opacity: 0.9,
+        lineJoin: 'round',
+        lineCap: 'round',
+      }).addTo(layer)
+    }
+
+    if (allPoints.length > 1) {
+      map.fitBounds(L.latLngBounds(allPoints), { padding: [50, 50], maxZoom: 16 })
+    }
+  }, [routeResult])
+
+  function toggleCategory(id: string) {
+    setActiveCategoryIds(previous => {
+      const next = new Set(previous)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleStatus(status: PinStatus) {
+    setActiveStatuses(previous => {
+      const next = new Set(previous)
+      if (next.has(status)) next.delete(status); else next.add(status)
+      return next
+    })
+  }
+
+  function toggleRating(rating: number) {
+    setActiveRatings(previous => {
+      const next = new Set(previous)
+      if (next.has(rating)) next.delete(rating); else next.add(rating)
+      return next
+    })
+  }
+
+  function startSelecting() {
+    setSelectedIds([])
+    setRouteResult(null)
+    setRouteError(null)
+    setSelecting(true)
+  }
+
+  function cancelSelecting() {
+    setSelecting(false)
+    setSelectedIds([])
+    setRouteResult(null)
+    setRouteError(null)
+  }
+
+  async function createOptimizedRoute() {
+    if (selectedIds.length < 2 || routing) return
+
+    const stops = selectedIds
+      .map(id => initialPins.find(pin => pin.id === id))
+      .filter((pin): pin is Pin => Boolean(pin))
+      .map(pin => ({ id: pin.id, lat: pin.latitude, lng: pin.longitude }))
+
+    if (stops.length < 2) return
+
+    setRouting(true)
+    setRouteError(null)
+
+    try {
+      const response = await fetch('/api/route-planner/optimized', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stops }),
+      })
+      const data = await response.json() as RouteResult & { error?: string }
+      if (!response.ok) throw new Error(data.error || 'Køreruten kunne ikke beregnes')
+
+      setRouteResult(data)
+      if (Array.isArray(data.orderedStopIds) && data.orderedStopIds.length === selectedIds.length) {
+        setSelectedIds(data.orderedStopIds)
+      }
+      setSelecting(false)
+    } catch (error) {
+      setRouteError(error instanceof Error ? error.message : 'Køreruten kunne ikke beregnes')
+    } finally {
+      setRouting(false)
+    }
+  }
+
+  const duration = formatDuration(routeResult?.durationSeconds ?? null)
+
+  return (
+    <div className="relative w-full h-[calc(100dvh-4rem)] min-h-[520px] overflow-hidden bg-void-950">
+      <div ref={containerRef} className="absolute inset-0" />
+
+      <aside className="absolute left-2 top-2 z-[500] w-28 md:w-32 rounded-xl border border-void-700 bg-void-900/90 p-2 shadow-xl backdrop-blur-sm">
+        <p className="mb-1 text-[10px] text-gray-500">Kategorier</p>
+        <div className="flex flex-wrap gap-1">
+          {categories.filter(category => !category.ownerId).map(category => (
+            <button
+              key={category.id}
+              type="button"
+              onClick={() => toggleCategory(category.id)}
+              className={`rounded-full px-2 py-1 text-[10px] font-semibold text-white transition-opacity ${activeCategoryIds.has(category.id) ? 'opacity-100' : 'opacity-35'}`}
+              style={{ backgroundColor: category.color }}
+            >
+              {category.name}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => toggleCategory(NO_CATEGORY)}
+            className={`rounded-full bg-gray-700 px-2 py-1 text-[10px] font-semibold text-white ${activeCategoryIds.has(NO_CATEGORY) ? 'opacity-100' : 'opacity-35'}`}
+          >
+            Ingen kategori
+          </button>
+        </div>
+
+        <p className="mb-1 mt-3 text-[10px] text-gray-500">Mærke</p>
+        <div className="flex flex-wrap gap-1">
+          {PIN_STATUSES.map(status => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => toggleStatus(status)}
+              className={`rounded-full px-2 py-1 text-[10px] font-semibold text-white ${activeStatuses.has(status) ? 'opacity-100' : 'opacity-35'}`}
+              style={{ backgroundColor: PIN_STATUS_COLORS[status] }}
+            >
+              {PIN_STATUS_LABELS[status]}
+            </button>
+          ))}
+        </div>
+
+        <p className="mb-1 mt-3 text-[10px] text-gray-500">Rating</p>
+        <div className="flex flex-wrap gap-1">
+          {[0, 1, 2, 3].map(rating => (
+            <button
+              key={rating}
+              type="button"
+              onClick={() => toggleRating(rating)}
+              className={`rounded-full px-2 py-1 text-[10px] font-semibold ${rating === 0 ? 'bg-gray-700 text-white' : 'bg-rust-600 text-white'} ${activeRatings.has(rating) ? 'opacity-100' : 'opacity-35'}`}
+            >
+              {rating === 0 ? 'Ingen' : '★'.repeat(rating)}
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      {selecting && (
+        <div className="absolute left-1/2 top-3 z-[600] -translate-x-1/2 rounded-xl border border-void-700 bg-void-900/95 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
+          <p className="text-sm font-semibold text-gray-100">Vælg pins på kortet</p>
+          <p className="mt-0.5 text-[11px] text-gray-400">
+            {selectedIds.length} valgt · første pin bliver start, sidste pin bliver slut
+          </p>
+        </div>
+      )}
+
+      {routeResult && (
+        <div className="absolute left-1/2 top-3 z-[600] -translate-x-1/2 rounded-xl border border-void-700 bg-void-900/95 px-4 py-2 text-center shadow-xl backdrop-blur-sm">
+          <p className="text-sm font-semibold text-gray-100">Optimeret kørerute</p>
+          <p className="mt-0.5 text-[11px] text-gray-400">
+            {selectedIds.length} stop
+            {Number.isFinite(routeResult.distanceKm) ? ` · ${routeResult.distanceKm!.toFixed(1)} km` : ''}
+            {duration ? ` · ${duration}` : ''}
+          </p>
+        </div>
+      )}
+
+      {routeError && (
+        <div className="absolute bottom-24 left-1/2 z-[700] w-[min(90vw,520px)] -translate-x-1/2 rounded-xl border border-red-900/60 bg-red-950/90 px-4 py-3 text-center text-sm text-red-200 shadow-xl">
+          {routeError}
+        </div>
+      )}
+
+      <div className="absolute bottom-5 left-1/2 z-[700] flex -translate-x-1/2 items-center gap-2">
+        {!selecting && !routeResult && (
+          <button type="button" onClick={startSelecting} className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl">
+            Vælg pins
+          </button>
+        )}
+
+        {selecting && (
+          <>
+            <button type="button" onClick={cancelSelecting} className="btn-secondary whitespace-nowrap px-4 py-3 shadow-xl">
+              Annuller
+            </button>
+            <button
+              type="button"
+              onClick={createOptimizedRoute}
+              disabled={selectedIds.length < 2 || routing}
+              className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {routing ? 'Beregner rute…' : 'Lav en optimeret kørerute'}
+            </button>
+          </>
+        )}
+
+        {routeResult && (
+          <button type="button" onClick={startSelecting} className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl">
+            Vælg pins igen
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
