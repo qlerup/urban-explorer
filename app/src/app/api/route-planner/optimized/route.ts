@@ -102,7 +102,8 @@ export async function POST(request: NextRequest) {
   const payload = {
     locations: stops.map(stop => ({ lat: stop.lat, lon: stop.lng, type: 'break' })),
     costing: 'auto',
-    units: 'kilometers',
+    // Valhalla bruger kilometer som standard. directions_options holder også
+    // den almindelige route-respons i kilometer.
     directions_options: { units: 'kilometers' },
   }
 
