@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getDataforsyningenToken } from '@/lib/settings'
+import { encodeUpstreamUrl } from '@/lib/skraafoto'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
           direction: item.properties!.direction as SkraafotoDirection,
           year,
           datetime,
-          thumbnailUrl: `/api/skraafoto/thumbnail?url=${encodeURIComponent(item.assets!.thumbnail!.href!)}`,
+          thumbnailUrl: `/api/skraafoto/thumbnail?url=${encodeUpstreamUrl(item.assets!.thumbnail!.href!)}`,
           cogUrl: item.assets!.data!.href!,
         }
       })

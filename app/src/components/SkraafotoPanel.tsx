@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import type * as Leaflet from 'leaflet'
+import { encodeUpstreamUrl } from '@/lib/skraafoto'
 
 type Direction = 'north' | 'south' | 'east' | 'west'
 
@@ -105,7 +106,7 @@ export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
     setViewerLoading(true)
     setViewerError(null)
 
-    fetch(`/api/skraafoto/info?url=${encodeURIComponent(activePhoto.cogUrl)}`)
+    fetch(`/api/skraafoto/info?url=${encodeUpstreamUrl(activePhoto.cogUrl)}`)
       .then(async res => {
         const text = await res.text()
         let data: { error?: string } & Partial<CogInfo>
@@ -138,7 +139,7 @@ export default function SkraafotoPanel({ lat, lng, onClose }: Props) {
         map.setMaxBounds(bounds)
         map.fitBounds(bounds)
 
-        const tileUrl = `/api/skraafoto/tiles/{z}/{x}/{y}?url=${encodeURIComponent(activePhoto.cogUrl)}`
+        const tileUrl = `/api/skraafoto/tiles/{z}/{x}/{y}?url=${encodeUpstreamUrl(activePhoto.cogUrl)}`
         tileLayerRef.current = L.tileLayer(tileUrl, {
           tileSize: info.tile_width,
           minZoom: 0,
