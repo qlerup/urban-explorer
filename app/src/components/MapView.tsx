@@ -82,7 +82,7 @@ function pinMatchesActiveCategories(pin: Pin, activeCategoryIds: Set<string>): b
   }
   return activeCategoryIds.has(pin.ownerId ? sharedUncatKey(pin.ownerId) : NO_CATEGORY)
 }
-type MapLayerId = 'satellite-v4' | 'hybrid-v4' | 'outdoor-v4' | 'geodanmark-ortofoto'
+type MapLayerId = 'satellite-v4' | 'hybrid-v4' | 'outdoor-v4' | 'geodanmark-ortofoto' | 'dataforsyningen-vejnavne'
 interface MapLayerPreviewTile {
   x: number
   y: number
@@ -96,6 +96,7 @@ const MAP_LAYERS: { id: MapLayerId; label: string; group: MapLayerGroup }[] = [
   { id: 'hybrid-v4', label: 'Vejnavne', group: 'generic' },
   { id: 'outdoor-v4', label: 'Outdoor', group: 'generic' },
   { id: 'geodanmark-ortofoto', label: 'GeoDanmark Ortofoto', group: 'danmark' },
+  { id: 'dataforsyningen-vejnavne', label: 'Vejnavne', group: 'danmark' },
 ]
 
 const MAP_ATTRIBUTION =
@@ -109,6 +110,10 @@ const ESRI_ATTRIBUTION =
 const GEODANMARK_ATTRIBUTION =
   '&copy; <a href="https://dataforsyningen.dk/" target="_blank" rel="noopener noreferrer">Klimadatastyrelsen / GeoDanmark</a>'
 
+// 'dataforsyningen-vejnavne' bruger samme ortofoto-bund som 'geodanmark-ortofoto' - vejnavne
+// lægges ovenpå som et separat, gennemsigtigt overlay-lag (se dataforsyningenLabelsOverlayRef).
+const DATAFORSYNINGEN_VEJNAVNE_OVERLAY_URL = '/api/map-tiles/dataforsyningen-vejnavne-labels/{z}/{x}/{y}'
+
 const ESRI_HYBRID_LABELS_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
 
@@ -118,17 +123,19 @@ const ESRI_HYBRID_ROADS_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
 
 function mapLayerAttribution(layerId: MapLayerId, provider: MapProvider): string {
-  if (layerId === 'geodanmark-ortofoto') return GEODANMARK_ATTRIBUTION
+  if (layerId === 'geodanmark-ortofoto' || layerId === 'dataforsyningen-vejnavne') return GEODANMARK_ATTRIBUTION
   return provider === 'esri' ? ESRI_ATTRIBUTION : MAP_ATTRIBUTION
 }
 
 function mapLayerMaxNativeZoom(layerId: MapLayerId, provider: MapProvider): number {
-  if (layerId === 'geodanmark-ortofoto') return 20
+  if (layerId === 'geodanmark-ortofoto' || layerId === 'dataforsyningen-vejnavne') return 20
   return provider === 'esri' ? ESRI_MAX_NATIVE_ZOOM : MAP_MAX_NATIVE_ZOOM
 }
 
 function mapLayerTileUrl(layerId: MapLayerId, provider: MapProvider, maptilerKey: string): string {
-  if (layerId === 'geodanmark-ortofoto') {
+  // 'dataforsyningen-vejnavne' viser samme ortofoto-bund som 'geodanmark-ortofoto' -
+  // vejnavnene lægges ovenpå som separat overlay (se dataforsyningenLabelsOverlayRef).
+  if (layerId === 'geodanmark-ortofoto' || layerId === 'dataforsyningen-vejnavne') {
     return '/api/map-tiles/geodanmark/{z}/{x}/{y}'
   }
   if (provider === 'esri') {
@@ -168,6 +175,10 @@ function mapLayerPreviewUrl(layerId: MapLayerId, provider: MapProvider, maptiler
     const labelsUrl = fillTileTemplate(ESRI_HYBRID_LABELS_URL, tile)
     const roadsUrl = fillTileTemplate(ESRI_HYBRID_ROADS_URL, tile)
     return `url("${labelsUrl}"), url("${roadsUrl}"), url("${baseUrl}")`
+  }
+  if (layerId === 'dataforsyningen-vejnavne') {
+    const labelsUrl = fillTileTemplate(DATAFORSYNINGEN_VEJNAVNE_OVERLAY_URL, tile)
+    return `url("${labelsUrl}"), url("${baseUrl}")`
   }
   return `url("${baseUrl}")`
 }
@@ -353,6 +364,7 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
   const baseLayerRef = useRef<Leaflet.TileLayer | null>(null)
   const hybridOverlayRef = useRef<Leaflet.TileLayer | null>(null)
   const hybridRoadsOverlayRef = useRef<Leaflet.TileLayer | null>(null)
+  const dataforsyningenLabelsOverlayRef = useRef<Leaflet.TileLayer | null>(null)
   const searchMarkerRef = useRef<Leaflet.CircleMarker | null>(null)
   const locateMarkerRef = useRef<Leaflet.Marker | null>(null)
   const lastPointerTypeRef = useRef<string>('mouse')
@@ -423,7 +435,8 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
   const focusPin = focusPinId ? initialPins.find(p => p.id === focusPinId) ?? null : null
   const [selectedPin, setSelectedPin] = useState<Pin | null>(focusPin)
   const availableMapLayers = MAP_LAYERS
-  const isMapLayerDisabled = (layerId: MapLayerId) => layerId === 'geodanmark-ortofoto' && !geodanmarkAvailable
+  const isMapLayerDisabled = (layerId: MapLayerId) =>
+    (layerId === 'geodanmark-ortofoto' || layerId === 'dataforsyningen-vejnavne') && !geodanmarkAvailable
   const selectedMapLayer = availableMapLayers.find(layer => layer.id === mapLayerId) ?? availableMapLayers[0]
 
   const ownCategories = categories.filter(c => !c.ownerId)
@@ -876,6 +889,15 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
         }).addTo(map)
       }
 
+      if (mapLayerId === 'dataforsyningen-vejnavne') {
+        dataforsyningenLabelsOverlayRef.current = L.tileLayer(DATAFORSYNINGEN_VEJNAVNE_OVERLAY_URL, {
+          tileSize: 256,
+          maxNativeZoom: 20,
+          maxZoom: MAP_MAX_ZOOM,
+          crossOrigin: true,
+        }).addTo(map)
+      }
+
       L.control.zoom({ position: 'topright' }).addTo(map)
 
       const CLUSTER_ICON_SIZE = 57
@@ -964,6 +986,8 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
       hybridOverlayRef.current = null
       hybridRoadsOverlayRef.current?.remove()
       hybridRoadsOverlayRef.current = null
+      dataforsyningenLabelsOverlayRef.current?.remove()
+      dataforsyningenLabelsOverlayRef.current = null
       markerClusterGroupRef.current?.remove()
       markerClusterGroupRef.current = null
       searchMarkerRef.current?.remove()
@@ -1051,6 +1075,17 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
       hybridOverlayRef.current = L.tileLayer(ESRI_HYBRID_LABELS_URL, {
         tileSize: 256,
         maxNativeZoom: ESRI_MAX_NATIVE_ZOOM,
+        maxZoom: MAP_MAX_ZOOM,
+        crossOrigin: true,
+      }).addTo(map)
+    }
+
+    dataforsyningenLabelsOverlayRef.current?.remove()
+    dataforsyningenLabelsOverlayRef.current = null
+    if (mapLayerId === 'dataforsyningen-vejnavne') {
+      dataforsyningenLabelsOverlayRef.current = L.tileLayer(DATAFORSYNINGEN_VEJNAVNE_OVERLAY_URL, {
+        tileSize: 256,
+        maxNativeZoom: 20,
         maxZoom: MAP_MAX_ZOOM,
         crossOrigin: true,
       }).addTo(map)
