@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 const DEFAULT_VALHALLA_URL = 'https://valhalla1.openstreetmap.de'
 const MAX_STOPS = 50
 const VALHALLA_TIMEOUT_MS = 12_000
-const SNAP_RADIUS_METERS = 1000
+const SNAP_RADIUS_METERS = 5000
 const MINIMUM_REACHABILITY = 1
 
 interface InputStop {
@@ -103,9 +103,9 @@ export async function POST(request: NextRequest) {
 
   const stops = body.stops as InputStop[]
   const payload = {
-    // Urban Explorer-pins ligger ofte inde på grunde, fabriksområder, marker osv.
-    // Lad derfor Valhalla korrelere punktet med den nærmeste brugbare bilvej
-    // i stedet for at kræve, at pinnen ligger direkte på vejnettet.
+    // Urban Explorer-pins ligger ofte langt inde på grunde, marker, skove,
+    // fabriksområder osv. Tillad derfor en stor søgeradius til nærmeste
+    // brugbare bilvej i stedet for at kræve, at pinnen ligger tæt på vejnettet.
     locations: stops.map(stop => ({
       lat: stop.lat,
       lon: stop.lng,
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
     if (!upstream.ok || !data.trip) {
       if (data.error_code === 171 || data.error === 'No suitable edges near location') {
         return NextResponse.json(
-          { error: 'Et af de valgte pins ligger for langt fra en vej, som kan bruges i en bilrute.' },
+          { error: 'Et af de valgte pins kunne ikke forbindes til en kørbar vej inden for 5 km.' },
           { status: 422 }
         )
       }
