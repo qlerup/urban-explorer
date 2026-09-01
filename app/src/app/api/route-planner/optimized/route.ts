@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 
 const DEFAULT_VALHALLA_URL = 'https://valhalla1.openstreetmap.de'
 const MAX_STOPS = 50
+const VALHALLA_TIMEOUT_MS = 12_000
 
 interface InputStop {
   id: string
@@ -53,10 +54,10 @@ async function requestValhalla(action: 'route' | 'optimized_route', payload: obj
   const baseUrl = (process.env.VALHALLA_URL || DEFAULT_VALHALLA_URL).replace(/\/$/, '')
   const endpoint = `${baseUrl}/${action}`
 
-  // Valhalla supports JSON requests. POST keeps URLs short when many pins are selected.
   let response = await fetch(endpoint, {
     method: 'POST',
     cache: 'no-store',
+    signal: AbortSignal.timeout(VALHALLA_TIMEOUT_MS),
     headers: {
       'Content-Type': 'application/json',
       'X-Client-Id': 'urban-explorer',
@@ -64,13 +65,13 @@ async function requestValhalla(action: 'route' | 'optimized_route', payload: obj
     body: JSON.stringify(payload),
   })
 
-  // A few hosted Valhalla setups expose optimized_route as GET-only. Fall back
-  // to the documented ?json= form if POST is rejected.
+  // Nogle hosted Valhalla-installationer eksponerer optimized_route som GET-only.
   if (response.status === 404 || response.status === 405) {
     const url = new URL(endpoint)
     url.searchParams.set('json', JSON.stringify(payload))
     response = await fetch(url, {
       cache: 'no-store',
+      signal: AbortSignal.timeout(VALHALLA_TIMEOUT_MS),
       headers: { 'X-Client-Id': 'urban-explorer' },
     })
   }
@@ -79,7 +80,7 @@ async function requestValhalla(action: 'route' | 'optimized_route', payload: obj
 }
 
 export async function POST(request: NextRequest) {
-  if (!(await getSession())) return new NextResponse(null, { status: 401 })
+  if (!(await getSession())) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
 
   let body: { stops?: unknown }
   try {
@@ -102,28 +103,30 @@ export async function POST(request: NextRequest) {
   const payload = {
     locations: stops.map(stop => ({ lat: stop.lat, lon: stop.lng, type: 'break' })),
     costing: 'auto',
-    // Valhalla bruger kilometer som standard. directions_options holder også
-    // den almindelige route-respons i kilometer.
     directions_options: { units: 'kilometers' },
   }
 
-  // Valhallas optimized_route kræver mindst fire locations. Med 2-3 stops er
-  // der reelt ingen/marginal rækkefølge at optimere, så vi bruger almindelig bilrute.
+  // Valhallas optimized_route kræver mindst fire locations. Med 2-3 stops
+  // bruges almindelig bilrouting i den valgte rækkefølge.
   const action = stops.length >= 4 ? 'optimized_route' : 'route'
 
   try {
     const upstream = await requestValhalla(action, payload)
     const text = await upstream.text()
     let data: ValhallaResponse
+
     try {
       data = JSON.parse(text) as ValhallaResponse
     } catch {
-      return NextResponse.json({ error: 'Routing-tjenesten gav et ugyldigt svar' }, { status: 502 })
+      return NextResponse.json(
+        { error: 'Rute-serveren gav et ugyldigt svar. Den er muligvis stadig ved at starte.' },
+        { status: 503 }
+      )
     }
 
     if (!upstream.ok || !data.trip) {
       const message = data.error || data.status || 'Køreruten kunne ikke beregnes'
-      return NextResponse.json({ error: message }, { status: 502 })
+      return NextResponse.json({ error: message }, { status: upstream.status >= 500 ? 503 : 502 })
     }
 
     const returnedLocations = data.trip.locations ?? data.locations ?? []
@@ -143,7 +146,18 @@ export async function POST(request: NextRequest) {
       distanceKm: data.trip.summary?.length ?? null,
       durationSeconds: data.trip.summary?.time ?? null,
     })
-  } catch {
-    return NextResponse.json({ error: 'Routing-tjenesten kunne ikke kontaktes' }, { status: 502 })
+  } catch (error) {
+    const name = error instanceof Error ? error.name : ''
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      return NextResponse.json(
+        { error: 'Rute-serveren svarer ikke endnu. Valhalla er muligvis stadig ved at bygge kortdata.' },
+        { status: 503 }
+      )
+    }
+
+    return NextResponse.json(
+      { error: 'Rute-serveren kunne ikke kontaktes. Tjek at Valhalla-containeren kører og er færdig med at starte.' },
+      { status: 503 }
+    )
   }
 }
