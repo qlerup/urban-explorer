@@ -16,6 +16,26 @@ services:
       timeout: 5s
       retries: 10
 
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: urban-explorer-valhalla
+    restart: unless-stopped
+    environment:
+      # Hent og byg kun Danmark. Første start bygger routing-grafen; derefter
+      # genbruges data fra valhalla_data-volume.
+      tile_urls: https://download.geofabrik.de/europe/denmark-latest.osm.pbf
+      serve_tiles: "True"
+      use_tiles_ignore_pbf: "True"
+      force_rebuild: "False"
+      force_rebuild_elevation: "False"
+      build_elevation: "False"
+      build_admins: "True"
+      build_time_zones: "True"
+      build_tar: "True"
+      server_threads: "2"
+    volumes:
+      - valhalla_data:/custom_files
+
   app:
     container_name: urban-explorer
     build:
@@ -32,6 +52,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       MAPTILER_KEY: ${MAPTILER_KEY:-}
       DATAFORSYNINGEN_TOKEN: ${DATAFORSYNINGEN_TOKEN:-}
+      VALHALLA_URL: http://valhalla:8002
       NODE_ENV: production
       TZ: ${TZ:-Europe/Copenhagen}
       FJORDHUB_URL: ${FJORDHUB_URL:-}
@@ -42,7 +63,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      valhalla:
+        condition: service_started
 
 volumes:
   postgres_data:
   uploads_data:
+  valhalla_data:
