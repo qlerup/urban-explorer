@@ -13,6 +13,7 @@ import PinModal from './PinModal'
 import SharePickerModal from './SharePickerModal'
 import UserShareModal from './UserShareModal'
 import SaveRouteModal from './SaveRouteModal'
+import SkraafotoPanel from './SkraafotoPanel'
 
 interface GridCellData {
   row: number
@@ -82,7 +83,7 @@ function pinMatchesActiveCategories(pin: Pin, activeCategoryIds: Set<string>): b
   }
   return activeCategoryIds.has(pin.ownerId ? sharedUncatKey(pin.ownerId) : NO_CATEGORY)
 }
-type MapLayerId = 'satellite-v4' | 'hybrid-v4' | 'outdoor-v4' | 'geodanmark-ortofoto' | 'dataforsyningen-vejnavne'
+type MapLayerId = 'satellite-v4' | 'hybrid-v4' | 'outdoor-v4' | 'geodanmark-ortofoto' | 'dataforsyningen-vejnavne' | 'dataforsyningen-skraafoto'
 interface MapLayerPreviewTile {
   x: number
   y: number
@@ -95,8 +96,9 @@ const MAP_LAYERS: { id: MapLayerId; label: string; group: MapLayerGroup }[] = [
   { id: 'satellite-v4', label: 'Satellit', group: 'generic' },
   { id: 'hybrid-v4', label: 'Vejnavne', group: 'generic' },
   { id: 'outdoor-v4', label: 'Outdoor', group: 'generic' },
-  { id: 'geodanmark-ortofoto', label: 'GeoDanmark Ortofoto', group: 'danmark' },
+  { id: 'geodanmark-ortofoto', label: 'Luftfoto Danmark', group: 'danmark' },
   { id: 'dataforsyningen-vejnavne', label: 'Vejnavne', group: 'danmark' },
+  { id: 'dataforsyningen-skraafoto', label: 'Skråfoto', group: 'danmark' },
 ]
 
 const MAP_ATTRIBUTION =
@@ -122,20 +124,25 @@ const ESRI_HYBRID_LABELS_URL =
 const ESRI_HYBRID_ROADS_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
 
+function isDataforsyningenBaseLayer(layerId: MapLayerId): boolean {
+  return layerId === 'geodanmark-ortofoto' || layerId === 'dataforsyningen-vejnavne' || layerId === 'dataforsyningen-skraafoto'
+}
+
 function mapLayerAttribution(layerId: MapLayerId, provider: MapProvider): string {
-  if (layerId === 'geodanmark-ortofoto' || layerId === 'dataforsyningen-vejnavne') return GEODANMARK_ATTRIBUTION
+  if (isDataforsyningenBaseLayer(layerId)) return GEODANMARK_ATTRIBUTION
   return provider === 'esri' ? ESRI_ATTRIBUTION : MAP_ATTRIBUTION
 }
 
 function mapLayerMaxNativeZoom(layerId: MapLayerId, provider: MapProvider): number {
-  if (layerId === 'geodanmark-ortofoto' || layerId === 'dataforsyningen-vejnavne') return 20
+  if (isDataforsyningenBaseLayer(layerId)) return 20
   return provider === 'esri' ? ESRI_MAX_NATIVE_ZOOM : MAP_MAX_NATIVE_ZOOM
 }
 
 function mapLayerTileUrl(layerId: MapLayerId, provider: MapProvider, maptilerKey: string): string {
-  // 'dataforsyningen-vejnavne' viser samme ortofoto-bund som 'geodanmark-ortofoto' -
-  // vejnavnene lægges ovenpå som separat overlay (se dataforsyningenLabelsOverlayRef).
-  if (layerId === 'geodanmark-ortofoto' || layerId === 'dataforsyningen-vejnavne') {
+  // 'dataforsyningen-vejnavne' og 'dataforsyningen-skraafoto' viser samme ortofoto-bund
+  // som 'geodanmark-ortofoto' - vejnavne lægges ovenpå som overlay (se
+  // dataforsyningenLabelsOverlayRef), og skråfoto er en klik-tilstand uden eget kortlag.
+  if (isDataforsyningenBaseLayer(layerId)) {
     return '/api/map-tiles/geodanmark/{z}/{x}/{y}'
   }
   if (provider === 'esri') {
@@ -372,7 +379,7 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
   const cadastralEnabledRef = useRef(false)
   const gridEnabledRef = useRef(false)
   const toggleGridCellRef = useRef<(row: number, col: number) => void>(() => {})
-  const pendingCenterRef = useRef<{ purpose: 'new-pin' | 'route-point' } | null>(null)
+  const pendingCenterRef = useRef<{ purpose: 'new-pin' | 'route-point' | 'skraafoto-point' } | null>(null)
   const newPinCoordsRef = useRef<{ lat: number; lng: number } | null>(null)
   const selectedPinRef = useRef<Pin | null>(null)
   const measureLayerRef = useRef<Leaflet.LayerGroup | null>(null)
@@ -388,7 +395,8 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
     () => initialPins.find(pin => pin.id === focusPinId)?.ownerId ?? null
   )
   const [newPinCoords, setNewPinCoords] = useState<{ lat: number; lng: number } | null>(null)
-  const [pendingCenter, setPendingCenter] = useState<{ purpose: 'new-pin' | 'route-point' } | null>(null)
+  const [pendingCenter, setPendingCenter] = useState<{ purpose: 'new-pin' | 'route-point' | 'skraafoto-point' } | null>(null)
+  const [skraafotoPoint, setSkraafotoPoint] = useState<{ lat: number; lng: number } | null>(null)
   const [measureMode, setMeasureMode] = useState<'measure' | 'route' | null>(null)
   const [measurePoints, setMeasurePoints] = useState<RoutePoint[]>([])
   const [showRoutePicker, setShowRoutePicker] = useState(false)
@@ -417,7 +425,7 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [pinsVisible, setPinsVisible] = useState(true)
   const [mapLayerId, setMapLayerId] = useState<MapLayerId>(() =>
-    lastMapLayerId === 'geodanmark-ortofoto' && !geodanmarkAvailable ? 'satellite-v4' : lastMapLayerId
+    isDataforsyningenBaseLayer(lastMapLayerId) && !geodanmarkAvailable ? 'satellite-v4' : lastMapLayerId
   )
   const [layerPickerOpen, setLayerPickerOpen] = useState(false)
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false)
@@ -435,8 +443,7 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
   const focusPin = focusPinId ? initialPins.find(p => p.id === focusPinId) ?? null : null
   const [selectedPin, setSelectedPin] = useState<Pin | null>(focusPin)
   const availableMapLayers = MAP_LAYERS
-  const isMapLayerDisabled = (layerId: MapLayerId) =>
-    (layerId === 'geodanmark-ortofoto' || layerId === 'dataforsyningen-vejnavne') && !geodanmarkAvailable
+  const isMapLayerDisabled = (layerId: MapLayerId) => isDataforsyningenBaseLayer(layerId) && !geodanmarkAvailable
   const selectedMapLayer = availableMapLayers.find(layer => layer.id === mapLayerId) ?? availableMapLayers[0]
 
   const ownCategories = categories.filter(c => !c.ownerId)
@@ -524,8 +531,10 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
     if (pendingCenter.purpose === 'new-pin') {
       if (!workspaceCanEditRef.current) return
       setNewPinCoords({ lat: center.lat, lng: center.lng })
-    } else {
+    } else if (pendingCenter.purpose === 'route-point') {
       setMeasurePoints(prev => [...prev, { lat: center.lat, lng: center.lng }])
+    } else {
+      setSkraafotoPoint({ lat: center.lat, lng: center.lng })
     }
     setPendingCenter(null)
   }
@@ -1091,6 +1100,12 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
       }).addTo(map)
     }
   }, [mapLayerId, mapReady, maptilerKey, mapProvider])
+
+  useEffect(() => {
+    if (mapLayerId !== 'dataforsyningen-skraafoto') {
+      setPendingCenter(prev => (prev?.purpose === 'skraafoto-point' ? null : prev))
+    }
+  }, [mapLayerId])
 
   useEffect(() => {
     const map = mapRef.current
@@ -1700,7 +1715,7 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full z-[900] pointer-events-none">
             <div className="flex flex-col items-center">
               <div className="w-[38px] h-[38px] rounded-full bg-white border-[3px] border-black shadow-[0_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-center text-lg">
-                {pendingCenter.purpose === 'new-pin' ? '📍' : '📌'}
+                {pendingCenter.purpose === 'new-pin' ? '📍' : pendingCenter.purpose === 'route-point' ? '📌' : '📷'}
               </div>
               <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[9px] border-t-black -mt-0.5" />
             </div>
@@ -1723,7 +1738,7 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
               onClick={confirmPendingCenter}
               className="rounded-full bg-rust-600 text-white px-5 py-2.5 text-sm font-semibold shadow-lg hover:bg-rust-700 transition-colors flex items-center gap-1.5"
             >
-              ✓ {pendingCenter.purpose === 'new-pin' ? 'Sæt pin' : 'Sæt punkt'}
+              ✓ {pendingCenter.purpose === 'new-pin' ? 'Sæt pin' : pendingCenter.purpose === 'route-point' ? 'Sæt punkt' : 'Vis skråfoto'}
             </button>
           </div>
         </>
@@ -1790,6 +1805,18 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
             className="rounded-full bg-void-900/90 border border-void-600 text-gray-200 px-5 py-2.5 text-sm font-semibold shadow-lg backdrop-blur-sm hover:bg-void-800 transition-colors"
           >
             ✕ Skjul rute
+          </button>
+        </div>
+      )}
+
+      {mapLayerId === 'dataforsyningen-skraafoto' && !pendingCenter && !skraafotoPoint && !measureMode && !viewingRoute && (
+        <div className="absolute bottom-28 md:bottom-6 left-1/2 -translate-x-1/2 z-[1000]">
+          <button
+            type="button"
+            onClick={() => setPendingCenter({ purpose: 'skraafoto-point' })}
+            className="rounded-full bg-rust-600 text-white px-5 py-2.5 text-sm font-semibold shadow-lg hover:bg-rust-700 transition-colors flex items-center gap-1.5"
+          >
+            📷 Vælg punkt for skråfoto
           </button>
         </div>
       )}
@@ -2293,6 +2320,14 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
       )}
 
       {userShareOpen && <UserShareModal onClose={() => setUserShareOpen(false)} />}
+
+      {skraafotoPoint && (
+        <SkraafotoPanel
+          lat={skraafotoPoint.lat}
+          lng={skraafotoPoint.lng}
+          onClose={() => setSkraafotoPoint(null)}
+        />
+      )}
 
       {showRoutePicker && measurePoints.length >= 2 && (
         <SaveRouteModal

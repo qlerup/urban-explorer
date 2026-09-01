@@ -52,7 +52,7 @@ export default function DataforsyningenSettingsForm() {
         ) : status.hasToken ? (
           <p className="text-sm text-emerald-400">✓ Token er sat ({status.maskedToken})</p>
         ) : (
-          <p className="text-sm text-amber-400">Ingen token sat endnu — GeoDanmark Ortofoto er deaktiveret på kortet</p>
+          <p className="text-sm text-amber-400">Ingen token sat endnu — Luftfoto Danmark, Vejnavne og Skråfoto er deaktiveret på kortet</p>
         )}
       </div>
 
