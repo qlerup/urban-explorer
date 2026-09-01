@@ -171,6 +171,7 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const [shareUsers, setShareUsers] = useState<ShareUserOption[]>([])
   const [directShares, setDirectShares] = useState<DirectPinShare[]>([])
   const [sharingLoading, setSharingLoading] = useState(false)
+  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const stagedFileInputRef = useRef<HTMLInputElement>(null)
@@ -190,6 +191,15 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
   const skraafotoUrl = `https://skraafoto.dataforsyningen.dk/?center=${encodeURIComponent(
     `${skraafotoCenter.easting.toFixed(2)},${skraafotoCenter.northing.toFixed(2)}`
   )}&year=2023`
+
+  useEffect(() => {
+    if (!previewImage) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewImage(null)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [previewImage])
   const canManageDirectShares = !readOnly && isOwnPin && !createOwnerId
 
   useEffect(() => {
@@ -810,7 +820,14 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
                         <video src={staged.previewUrl} className="w-full h-full object-cover" controls muted playsInline preload="metadata" />
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={staged.previewUrl} alt={staged.file.name} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImage({ url: staged.previewUrl, name: staged.file.name })}
+                          className="block w-full h-full cursor-zoom-in"
+                          aria-label={`Vis ${staged.file.name} i stor størrelse`}
+                        >
+                          <img src={staged.previewUrl} alt={staged.file.name} className="w-full h-full object-cover" />
+                        </button>
                       )}
                       <button
                         onClick={() => removeStagedImage(i)}
@@ -848,7 +865,14 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
                       <video src={img.url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={img.url} alt={img.originalName} className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImage({ url: img.url, name: img.originalName })}
+                        className="block w-full h-full cursor-zoom-in"
+                        aria-label={`Vis ${img.originalName} i stor størrelse`}
+                      >
+                        <img src={img.url} alt={img.originalName} className="w-full h-full object-cover" />
+                      </button>
                     )}
                   </div>
                 ))}
@@ -867,7 +891,14 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
                         <video src={img.url} className="w-full h-full object-cover" controls playsInline preload="metadata" />
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={img.url} alt={img.originalName} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImage({ url: img.url, name: img.originalName })}
+                          className="block w-full h-full cursor-zoom-in"
+                          aria-label={`Vis ${img.originalName} i stor størrelse`}
+                        >
+                          <img src={img.url} alt={img.originalName} className="w-full h-full object-cover" />
+                        </button>
                       )}
                       <button
                         onClick={() => handleDeleteImage(img.id)}
@@ -1012,6 +1043,32 @@ export default function PinModal({ coords, pin, categories, onClose, onCreated, 
               <p className="px-1 pt-3 text-center text-xs text-gray-500">Pinnen gemmes uden kategori.</p>
             )}
           </div>
+        </div>
+      )}
+
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/90 p-3 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Billedvisning: ${previewImage.name}`}
+          onClick={() => setPreviewImage(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setPreviewImage(null)}
+            className="absolute right-3 top-3 sm:right-5 sm:top-5 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-black/70 text-3xl leading-none text-white hover:bg-black"
+            aria-label="Luk billedvisning"
+          >
+            ×
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={previewImage.url}
+            alt={previewImage.name}
+            className="max-h-full max-w-full object-contain select-none"
+            onClick={event => event.stopPropagation()}
+          />
         </div>
       )}
     </div>
