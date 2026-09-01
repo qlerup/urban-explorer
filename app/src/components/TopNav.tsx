@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 
 const BASE_ITEMS = [
   { href: '/dashboard/kort', label: 'Kort' },
+  { href: '/dashboard/ruteplanlaegger', label: 'Ruteplanlægger' },
   { href: '/dashboard/pins', label: 'Mine pins' },
   { href: '/dashboard/kategorier', label: 'Kategorier' },
   { href: '/dashboard/delte-links', label: 'Delte links' },
