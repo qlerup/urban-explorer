@@ -23,6 +23,10 @@ interface ValhallaLocation {
 
 interface ValhallaLeg {
   shape?: string
+  summary?: {
+    length?: number
+    time?: number
+  }
 }
 
 interface ValhallaResponse {
@@ -88,7 +92,6 @@ async function requestValhalla(action: ValhallaAction, payload: object): Promise
     body: JSON.stringify(payload),
   })
 
-  // Nogle hosted Valhalla-installationer eksponerer enkelte actions som GET-only.
   if (response.status === 404 || response.status === 405) {
     const url = new URL(endpoint)
     url.searchParams.set('json', JSON.stringify(payload))
@@ -163,10 +166,7 @@ export async function POST(request: NextRequest) {
     try {
       data = JSON.parse(text) as ValhallaResponse
     } catch {
-      return NextResponse.json(
-        { error: 'Rute-serveren gav et ugyldigt svar.' },
-        { status: 503 }
-      )
+      return NextResponse.json({ error: 'Rute-serveren gav et ugyldigt svar.' }, { status: 503 })
     }
 
     if (!upstream.ok || !data.trip) {
@@ -208,12 +208,20 @@ export async function POST(request: NextRequest) {
       : stops.map((_, index) => index)
 
     const orderedStopIds = orderedIndexes.map(index => stops[index]?.id).filter(Boolean)
-    const shapes = (data.trip.legs ?? []).map(leg => leg.shape).filter((shape): shape is string => Boolean(shape))
+    const tripLegs = data.trip.legs ?? []
+    const shapes = tripLegs.map(leg => leg.shape).filter((shape): shape is string => Boolean(shape))
+    const legs = tripLegs.map((leg, index) => ({
+      fromId: orderedStopIds[index] ?? null,
+      toId: orderedStopIds[index + 1] ?? null,
+      distanceKm: leg.summary?.length ?? null,
+      durationSeconds: leg.summary?.time ?? null,
+    }))
 
     return NextResponse.json({
       optimized: action === 'optimized_route',
       orderedStopIds,
       shapes,
+      legs,
       distanceKm: data.trip.summary?.length ?? null,
       durationSeconds: data.trip.summary?.time ?? null,
     })
