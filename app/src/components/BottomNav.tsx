@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 
 const BASE_ITEMS = [
   { href: '/dashboard/kort', label: 'Kort', icon: '🗺️' },
+  { href: '/dashboard/ruteplanlaegger', label: 'Rute', icon: '🚗' },
   { href: '/dashboard/pins', label: 'Mine pins', icon: '📍' },
   { href: '/dashboard/kategorier', label: 'Kategorier', icon: '🏷️' },
   { href: '/dashboard/delte-links', label: 'Delt', icon: '🔗' },
@@ -26,11 +27,11 @@ export default function BottomNav({ isAdmin }: { isAdmin: boolean }) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex-1 flex flex-col items-center gap-0.5 rounded-xl py-2 text-xs font-medium transition-colors ${
+              className={`flex-1 flex flex-col items-center gap-0.5 rounded-xl py-2 text-[10px] font-medium transition-colors ${
                 active ? 'text-rust-500' : 'text-gray-500'
               }`}
             >
-              <span className="text-xl leading-none">{item.icon}</span>
+              <span className="text-lg leading-none">{item.icon}</span>
               {item.label}
             </Link>
           )
