@@ -16,6 +16,21 @@ export async function setMaptilerKey(key: string): Promise<void> {
   )
 }
 
+export async function getDataforsyningenToken(): Promise<string | null> {
+  const result = await pool.query('SELECT dataforsyningen_token FROM app_settings WHERE id = 1')
+  const stored = result.rows[0]?.dataforsyningen_token
+  if (stored) return decryptIfEncrypted(stored)
+  return process.env.DATAFORSYNINGEN_TOKEN || null
+}
+
+export async function setDataforsyningenToken(token: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO app_settings (id, dataforsyningen_token, updated_at) VALUES (1, $1, NOW())
+     ON CONFLICT (id) DO UPDATE SET dataforsyningen_token = EXCLUDED.dataforsyningen_token, updated_at = NOW()`,
+    [encrypt(token)]
+  )
+}
+
 export type MapProvider = 'maptiler' | 'esri'
 
 export async function getMapProvider(): Promise<MapProvider> {

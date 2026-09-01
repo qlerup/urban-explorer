@@ -121,14 +121,15 @@ ALTER TABLE pin_routes ADD COLUMN IF NOT EXISTS distance_meters DOUBLE PRECISION
 CREATE INDEX IF NOT EXISTS idx_pin_routes_pin_id ON pin_routes(pin_id);
 
 CREATE TABLE IF NOT EXISTS app_settings (
-    id            SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
-    maptiler_key  TEXT,
-    smtp_user     TEXT,
-    smtp_password TEXT,
-    smtp_host     TEXT,
-    smtp_port     INTEGER,
-    map_provider  TEXT NOT NULL DEFAULT 'esri',
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id                     SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    maptiler_key           TEXT,
+    smtp_user              TEXT,
+    smtp_password          TEXT,
+    smtp_host              TEXT,
+    smtp_port              INTEGER,
+    map_provider           TEXT NOT NULL DEFAULT 'esri',
+    dataforsyningen_token  TEXT,
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_user TEXT;
@@ -136,6 +137,7 @@ ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_password TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_host TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_port INTEGER;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS map_provider TEXT NOT NULL DEFAULT 'esri';
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS dataforsyningen_token TEXT;
 
 CREATE TABLE IF NOT EXISTS password_reset_challenges (
     id               UUID PRIMARY KEY,

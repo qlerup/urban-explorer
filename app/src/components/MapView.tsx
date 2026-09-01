@@ -55,6 +55,7 @@ type MapProvider = 'maptiler' | 'esri'
 interface Props {
   maptilerKey: string
   mapProvider: MapProvider
+  geodanmarkAvailable?: boolean
   initialPins: Pin[]
   categories: Category[]
   sharedWorkspaces?: SharedWorkspace[]
@@ -81,7 +82,7 @@ function pinMatchesActiveCategories(pin: Pin, activeCategoryIds: Set<string>): b
   }
   return activeCategoryIds.has(pin.ownerId ? sharedUncatKey(pin.ownerId) : NO_CATEGORY)
 }
-type MapLayerId = 'satellite-v4' | 'hybrid-v4' | 'outdoor-v4'
+type MapLayerId = 'satellite-v4' | 'hybrid-v4' | 'outdoor-v4' | 'geodanmark-ortofoto'
 interface MapLayerPreviewTile {
   x: number
   y: number
@@ -92,6 +93,7 @@ const MAP_LAYERS: { id: MapLayerId; label: string }[] = [
   { id: 'satellite-v4', label: 'Satellit' },
   { id: 'hybrid-v4', label: 'Vejnavne' },
   { id: 'outdoor-v4', label: 'Outdoor' },
+  { id: 'geodanmark-ortofoto', label: 'GeoDanmark Ortofoto' },
 ]
 
 const MAP_ATTRIBUTION =
@@ -102,18 +104,26 @@ const ESRI_ATTRIBUTION =
   'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener noreferrer">Esri</a> ' +
   '&mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
 
+const GEODANMARK_ATTRIBUTION =
+  '&copy; <a href="https://dataforsyningen.dk/" target="_blank" rel="noopener noreferrer">Klimadatastyrelsen / GeoDanmark</a>'
+
 const ESRI_HYBRID_LABELS_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
 
-function mapLayerAttribution(provider: MapProvider): string {
+function mapLayerAttribution(layerId: MapLayerId, provider: MapProvider): string {
+  if (layerId === 'geodanmark-ortofoto') return GEODANMARK_ATTRIBUTION
   return provider === 'esri' ? ESRI_ATTRIBUTION : MAP_ATTRIBUTION
 }
 
-function mapLayerMaxNativeZoom(provider: MapProvider): number {
+function mapLayerMaxNativeZoom(layerId: MapLayerId, provider: MapProvider): number {
+  if (layerId === 'geodanmark-ortofoto') return 20
   return provider === 'esri' ? ESRI_MAX_NATIVE_ZOOM : MAP_MAX_NATIVE_ZOOM
 }
 
 function mapLayerTileUrl(layerId: MapLayerId, provider: MapProvider, maptilerKey: string): string {
+  if (layerId === 'geodanmark-ortofoto') {
+    return '/api/map-tiles/geodanmark/{z}/{x}/{y}'
+  }
   if (provider === 'esri') {
     if (layerId === 'outdoor-v4') {
       return 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'
@@ -326,7 +336,7 @@ function parseCoordinateSearch(input: string): SearchCoordinates | null {
   return null
 }
 
-export default function MapView({ maptilerKey, mapProvider, initialPins, categories, sharedWorkspaces = [], initialGridCells, focusPinId, readOnly }: Props) {
+export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable = false, initialPins, categories, sharedWorkspaces = [], initialGridCells, focusPinId, readOnly }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<Leaflet.Map | null>(null)
   const leafletRef = useRef<typeof Leaflet | null>(null)
@@ -385,7 +395,9 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
   const [searchError, setSearchError] = useState<string | null>(null)
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [pinsVisible, setPinsVisible] = useState(true)
-  const [mapLayerId, setMapLayerId] = useState<MapLayerId>(() => lastMapLayerId)
+  const [mapLayerId, setMapLayerId] = useState<MapLayerId>(() =>
+    lastMapLayerId === 'geodanmark-ortofoto' && !geodanmarkAvailable ? 'satellite-v4' : lastMapLayerId
+  )
   const [layerPickerOpen, setLayerPickerOpen] = useState(false)
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false)
   const [previewTile, setPreviewTile] = useState<MapLayerPreviewTile | null>(null)
@@ -401,7 +413,9 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
 
   const focusPin = focusPinId ? initialPins.find(p => p.id === focusPinId) ?? null : null
   const [selectedPin, setSelectedPin] = useState<Pin | null>(focusPin)
-  const selectedMapLayer = MAP_LAYERS.find(layer => layer.id === mapLayerId) ?? MAP_LAYERS[0]
+  const availableMapLayers = MAP_LAYERS
+  const isMapLayerDisabled = (layerId: MapLayerId) => layerId === 'geodanmark-ortofoto' && !geodanmarkAvailable
+  const selectedMapLayer = availableMapLayers.find(layer => layer.id === mapLayerId) ?? availableMapLayers[0]
 
   const ownCategories = categories.filter(c => !c.ownerId)
   const activeWorkspace = activeWorkspaceOwnerId
@@ -570,6 +584,7 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
   }
 
   function chooseMapLayer(layerId: MapLayerId) {
+    if (layerId === 'geodanmark-ortofoto' && !geodanmarkAvailable) return
     lastMapLayerId = layerId
     setMapLayerId(layerId)
     setLayerPickerOpen(false)
@@ -830,9 +845,9 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
       setGridZoom(map.getZoom())
 
       baseLayerRef.current = L.tileLayer(mapLayerTileUrl(mapLayerId, mapProvider, maptilerKey), {
-        attribution: mapLayerAttribution(mapProvider),
+        attribution: mapLayerAttribution(mapLayerId, mapProvider),
         tileSize: 256,
-        maxNativeZoom: mapLayerMaxNativeZoom(mapProvider),
+        maxNativeZoom: mapLayerMaxNativeZoom(mapLayerId, mapProvider),
         maxZoom: MAP_MAX_ZOOM,
         crossOrigin: true,
       }).addTo(map)
@@ -998,9 +1013,9 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
 
     baseLayerRef.current?.remove()
     baseLayerRef.current = L.tileLayer(mapLayerTileUrl(mapLayerId, mapProvider, maptilerKey), {
-      attribution: mapLayerAttribution(mapProvider),
+      attribution: mapLayerAttribution(mapLayerId, mapProvider),
       tileSize: 256,
-      maxNativeZoom: mapLayerMaxNativeZoom(mapProvider),
+      maxNativeZoom: mapLayerMaxNativeZoom(mapLayerId, mapProvider),
       maxZoom: MAP_MAX_ZOOM,
       crossOrigin: true,
     }).addTo(map)
@@ -1831,17 +1846,23 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
             <div className="my-1.5 border-t border-void-700" />
             <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">Andre kortlag</p>
             <div className="space-y-1">
-              {MAP_LAYERS.filter(layer => layer.id !== mapLayerId).map(layer => {
+              {availableMapLayers.filter(layer => layer.id !== mapLayerId).map(layer => {
                 const previewUrl = previewTile ? mapLayerPreviewUrl(layer.id, mapProvider, maptilerKey, previewTile) : null
+                const disabled = isMapLayerDisabled(layer.id)
                 return (
                   <button
                     key={layer.id}
                     type="button"
                     onClick={() => chooseMapLayer(layer.id)}
-                    className="w-full rounded-xl p-1 text-left text-xs font-semibold transition-colors flex items-center gap-2.5 text-gray-400 hover:bg-void-800 hover:text-gray-100"
+                    disabled={disabled}
                     aria-pressed={false}
+                    aria-disabled={disabled}
+                    title={disabled ? 'Kræver en Dataforsyningen-token (Indstillinger)' : undefined}
+                    className={`w-full rounded-xl p-1 text-left text-xs font-semibold transition-colors flex items-center gap-2.5 ${
+                      disabled ? 'text-gray-600 opacity-50 cursor-not-allowed' : 'text-gray-400 hover:bg-void-800 hover:text-gray-100'
+                    }`}
                   >
-                    <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-void-600 bg-void-800">
+                    <span className={`h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-void-600 bg-void-800 ${disabled ? 'grayscale' : ''}`}>
                       {previewUrl && (
                         <span
                           className="block h-full w-full bg-cover bg-center"
@@ -1850,6 +1871,9 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
                       )}
                     </span>
                     <span className="min-w-0 truncate">{layer.label}</span>
+                    {disabled && (
+                      <span className="ml-auto shrink-0 text-[9px] font-semibold uppercase tracking-wide text-gray-600">Kræver token</span>
+                    )}
                   </button>
                 )
               })}
@@ -2068,20 +2092,27 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
               </button>
             </div>
             <div className="space-y-1.5 px-5">
-              {MAP_LAYERS.map(layer => {
+              {availableMapLayers.map(layer => {
                 const active = layer.id === mapLayerId
+                const disabled = isMapLayerDisabled(layer.id)
                 const layerPreviewUrl = previewTile ? mapLayerPreviewUrl(layer.id, mapProvider, maptilerKey, previewTile) : null
                 return (
                   <button
                     key={layer.id}
                     type="button"
                     onClick={() => chooseMapLayer(layer.id)}
+                    disabled={disabled}
                     aria-pressed={active}
+                    aria-disabled={disabled}
                     className={`flex w-full items-center gap-3 rounded-xl border p-2 text-left transition-colors ${
-                      active ? 'border-rust-500 bg-rust-600/15' : 'border-void-700 active:bg-void-800'
+                      disabled
+                        ? 'border-void-800 opacity-50 cursor-not-allowed'
+                        : active
+                        ? 'border-rust-500 bg-rust-600/15'
+                        : 'border-void-700 active:bg-void-800'
                     }`}
                   >
-                    <span className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-void-800 ring-1 ring-void-600">
+                    <span className={`h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-void-800 ring-1 ring-void-600 ${disabled ? 'grayscale' : ''}`}>
                       {layerPreviewUrl && (
                         <span
                           className="block h-full w-full bg-cover bg-center"
@@ -2089,14 +2120,16 @@ export default function MapView({ maptilerKey, mapProvider, initialPins, categor
                         />
                       )}
                     </span>
-                    <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${active ? 'text-white' : 'text-gray-300'}`}>
+                    <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${disabled ? 'text-gray-600' : active ? 'text-white' : 'text-gray-300'}`}>
                       {layer.label}
                     </span>
-                    {active && (
+                    {disabled ? (
+                      <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-gray-600">Kræver token</span>
+                    ) : active ? (
                       <svg className="h-5 w-5 shrink-0 text-rust-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
-                    )}
+                    ) : null}
                   </button>
                 )
               })}

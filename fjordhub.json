@@ -37,6 +37,13 @@
           "type": "text",
           "default": "",
           "hint": "Gratis nøgle fra cloud.maptiler.com - kan også sættes senere under Indstillinger i appen"
+        },
+        {
+          "key": "DATAFORSYNINGEN_TOKEN",
+          "label": "Dataforsyningen-token (valgfri)",
+          "type": "password",
+          "default": "",
+          "hint": "Giver adgang til GeoDanmark Ortofoto som kortlag"
         }
       ]
     },

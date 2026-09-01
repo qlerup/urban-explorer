@@ -4,7 +4,7 @@ import { getSession } from '@/lib/auth'
 import { getPinsForUser } from '@/lib/pins'
 import { getCategoriesForUser, getCategoriesSharedWithUser, getSharedWorkspacesForUser } from '@/lib/categories'
 import { getGridCellsForUser } from '@/lib/grid'
-import { getMaptilerKey, getMapProvider } from '@/lib/settings'
+import { getMaptilerKey, getMapProvider, getDataforsyningenToken } from '@/lib/settings'
 import MapView from '@/components/MapView'
 
 export const dynamic = 'force-dynamic'
@@ -15,7 +15,11 @@ export default async function KortPage({ searchParams }: { searchParams: Promise
   const session = await getSession()
   if (!session) redirect('/login')
 
-  const [maptilerKey, mapProvider] = await Promise.all([getMaptilerKey(), getMapProvider()])
+  const [maptilerKey, mapProvider, dataforsyningenToken] = await Promise.all([
+    getMaptilerKey(),
+    getMapProvider(),
+    getDataforsyningenToken(),
+  ])
 
   if (mapProvider === 'maptiler' && (!maptilerKey || maptilerKey === PLACEHOLDER_KEY)) {
     return (
@@ -47,6 +51,7 @@ export default async function KortPage({ searchParams }: { searchParams: Promise
     <MapView
       maptilerKey={maptilerKey ?? ''}
       mapProvider={mapProvider}
+      geodanmarkAvailable={Boolean(dataforsyningenToken)}
       initialPins={pins}
       categories={[...categories, ...sharedCategories]}
       sharedWorkspaces={sharedWorkspaces}

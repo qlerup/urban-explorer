@@ -31,6 +31,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       MAPTILER_KEY: ${MAPTILER_KEY:-}
+      DATAFORSYNINGEN_TOKEN: ${DATAFORSYNINGEN_TOKEN:-}
       NODE_ENV: production
       TZ: ${TZ:-Europe/Copenhagen}
       FJORDHUB_URL: ${FJORDHUB_URL:-}

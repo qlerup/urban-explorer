@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
 import { listUsers } from '@/lib/users'
 import MaptilerSettingsForm from '@/components/MaptilerSettingsForm'
+import DataforsyningenSettingsForm from '@/components/DataforsyningenSettingsForm'
 import MapProviderSettingsForm from '@/components/MapProviderSettingsForm'
 import UsersManager from '@/components/UsersManager'
 import { syncFjordHubUsers } from '@/lib/fjordhub'
@@ -28,6 +29,10 @@ export default async function IndstillingerPage() {
 
       <div className="card mb-8">
         <MaptilerSettingsForm />
+      </div>
+
+      <div className="card mb-8">
+        <DataforsyningenSettingsForm />
       </div>
 
       <div className="card mb-8">
