@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getDataforsyningenToken } from '@/lib/settings'
-import { parseAllowedDataforsyningenUrl } from '@/lib/skraafoto'
+import { parseAllowedDataforsyningenUrl, describeRejectedUrl } from '@/lib/skraafoto'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,9 +15,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Dataforsyningen-token mangler' }, { status: 503 })
   }
 
-  const cogUrl = parseAllowedDataforsyningenUrl(request.nextUrl.searchParams.get('url'))
+  const rawUrl = request.nextUrl.searchParams.get('url')
+  const cogUrl = parseAllowedDataforsyningenUrl(rawUrl)
   if (!cogUrl) {
-    return NextResponse.json({ error: 'Ugyldig billed-URL' }, { status: 400 })
+    return NextResponse.json({ error: `Ugyldig billed-URL (${describeRejectedUrl(rawUrl)})` }, { status: 400 })
   }
 
   const upstreamUrl = new URL(COGTILER_INFO_URL)
