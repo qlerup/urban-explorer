@@ -6,6 +6,8 @@ export const dynamic = 'force-dynamic'
 const DEFAULT_VALHALLA_URL = 'https://valhalla1.openstreetmap.de'
 const MAX_STOPS = 50
 const VALHALLA_TIMEOUT_MS = 12_000
+const SNAP_RADIUS_METERS = 1000
+const MINIMUM_REACHABILITY = 1
 
 interface InputStop {
   id: string
@@ -101,7 +103,17 @@ export async function POST(request: NextRequest) {
 
   const stops = body.stops as InputStop[]
   const payload = {
-    locations: stops.map(stop => ({ lat: stop.lat, lon: stop.lng, type: 'break' })),
+    // Urban Explorer-pins ligger ofte inde på grunde, fabriksområder, marker osv.
+    // Lad derfor Valhalla korrelere punktet med den nærmeste brugbare bilvej
+    // i stedet for at kræve, at pinnen ligger direkte på vejnettet.
+    locations: stops.map(stop => ({
+      lat: stop.lat,
+      lon: stop.lng,
+      type: 'break',
+      radius: SNAP_RADIUS_METERS,
+      minimum_reachability: MINIMUM_REACHABILITY,
+      rank_candidates: true,
+    })),
     costing: 'auto',
     directions_options: { units: 'kilometers' },
   }
@@ -125,6 +137,20 @@ export async function POST(request: NextRequest) {
     }
 
     if (!upstream.ok || !data.trip) {
+      if (data.error_code === 171 || data.error === 'No suitable edges near location') {
+        return NextResponse.json(
+          { error: 'Et af de valgte pins ligger for langt fra en vej, som kan bruges i en bilrute.' },
+          { status: 422 }
+        )
+      }
+
+      if (data.error === 'No data found for location') {
+        return NextResponse.json(
+          { error: 'Et af de valgte pins ligger uden for de routing-kortdata, der er installeret.' },
+          { status: 422 }
+        )
+      }
+
       const message = data.error || data.status || 'Køreruten kunne ikke beregnes'
       return NextResponse.json({ error: message }, { status: upstream.status >= 500 ? 503 : 502 })
     }
