@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { getSession } from '@/lib/auth'
 import { getPinsForUser } from '@/lib/pins'
 import { getCategoriesForUser, getCategoriesSharedWithUser } from '@/lib/categories'
-import { getMaptilerKey, getMapProvider } from '@/lib/settings'
+import { getMaptilerKey, getMapProvider, getDataforsyningenToken } from '@/lib/settings'
 import { getSavedRouteForUser } from '@/lib/savedRoutes'
 import RoutePlannerShell from '@/components/RoutePlannerShell'
 
@@ -20,9 +20,10 @@ export default async function RoutePlannerPage({
   if (!session) redirect('/login')
 
   const { rute } = await searchParams
-  const [maptilerKey, mapProvider, pins, categories, sharedCategories, savedRoute] = await Promise.all([
+  const [maptilerKey, mapProvider, dataforsyningenToken, pins, categories, sharedCategories, savedRoute] = await Promise.all([
     getMaptilerKey(),
     getMapProvider(),
+    getDataforsyningenToken(),
     getPinsForUser(session.userId),
     getCategoriesForUser(session.userId),
     getCategoriesSharedWithUser(session.userId),
@@ -50,7 +51,7 @@ export default async function RoutePlannerPage({
     <RoutePlannerShell
       maptilerKey={maptilerKey ?? ''}
       mapProvider={mapProvider}
-      geodanmarkAvailable={false}
+      geodanmarkAvailable={Boolean(dataforsyningenToken)}
       initialPins={pins}
       categories={[...categories, ...sharedCategories]}
       initialSavedRoute={savedRoute ? {
