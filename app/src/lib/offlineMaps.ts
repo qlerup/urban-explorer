@@ -65,7 +65,7 @@ export const OFFLINE_QUALITY: Record<OfflineMapQuality, { label: string; maxZoom
 
 export const OFFLINE_MIN_ZOOM = 6
 export const OFFLINE_BUFFER_KM = 3
-export const OFFLINE_MAX_TILES = 100_000
+export const OFFLINE_MAX_TILES = 1_000_000
 
 function openOfflineDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
