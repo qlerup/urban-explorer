@@ -43,7 +43,26 @@ export default function PwaServiceWorker() {
         console.warn('[offline] Service worker kunne ikke registreres:', error)
       })
 
-    return () => { cancelled = true }
+    const handleOfflineLink = (event: MouseEvent) => {
+      if (navigator.onLine) return
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const anchor = target.closest<HTMLAnchorElement>('a[href]')
+      if (!anchor) return
+      const url = new URL(anchor.href, window.location.origin)
+      if (url.origin !== window.location.origin) return
+      if (url.pathname !== '/dashboard/kort' && url.pathname !== '/dashboard/ruteplanlaegger') return
+
+      event.preventDefault()
+      window.location.assign(`${url.pathname}${url.search}${url.hash}`)
+    }
+
+    document.addEventListener('click', handleOfflineLink, true)
+
+    return () => {
+      cancelled = true
+      document.removeEventListener('click', handleOfflineLink, true)
+    }
   }, [])
 
   return null
