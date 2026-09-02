@@ -92,6 +92,7 @@ export default function MapViewLoader(props: Props) {
         initialPins={props.initialPins}
         categories={props.categories}
         geodanmarkAvailable={Boolean(props.geodanmarkAvailable)}
+        standaloneMobileButton={false}
       />
     </div>
   )
