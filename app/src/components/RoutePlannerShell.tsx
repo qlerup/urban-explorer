@@ -226,31 +226,38 @@ export default function RoutePlannerShell({
                   {online ? 'Du har ikke gemt nogen ruter endnu.' : 'Det aktive offlineområde indeholder ingen gemte ruter.'}
                 </div>
               ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-3">
                   {savedRoutes.map(route => (
-                    <div key={route.id} className="rounded-xl border border-void-700 bg-void-800/70 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold text-gray-100">{route.name}</p>
-                          <p className="mt-1 text-xs text-gray-400">
-                            {route.pinCount} pins · {formatDistance(route.distanceKm)} · {formatDuration(route.durationSeconds)}
-                          </p>
-                          <p className="mt-1 text-[11px] text-gray-600">
-                            {online ? `Gemt ${new Date(route.createdAt).toLocaleDateString('da-DK')}` : 'Gemt i offlinepakken'}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={Boolean(loadingRouteId)}
-                          onClick={() => void loadSavedRoute(route.id)}
-                          className="btn-primary flex min-w-[92px] shrink-0 items-center justify-center gap-2 px-3 py-2 disabled:cursor-wait disabled:opacity-60"
-                        >
-                          {loadingRouteId === route.id ? (
-                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden="true" />
-                          ) : null}
-                          <span>{loadingRouteId === route.id ? 'Indlæser…' : 'Indlæs'}</span>
-                        </button>
+                    <div key={route.id} className="rounded-xl border border-void-700 bg-void-800/70 p-4">
+                      <p className="truncate text-sm font-semibold text-gray-100">{route.name}</p>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="whitespace-nowrap rounded-lg border border-void-600 bg-void-900/80 px-2.5 py-1.5 text-xs font-medium text-gray-300">
+                          📍 {route.pinCount} pins
+                        </span>
+                        <span className="whitespace-nowrap rounded-lg border border-void-600 bg-void-900/80 px-2.5 py-1.5 text-xs font-medium text-gray-300">
+                          ↔ {formatDistance(route.distanceKm)}
+                        </span>
+                        <span className="whitespace-nowrap rounded-lg border border-void-600 bg-void-900/80 px-2.5 py-1.5 text-xs font-medium text-gray-300">
+                          ◷ {formatDuration(route.durationSeconds)}
+                        </span>
                       </div>
+
+                      <p className="mt-3 text-[11px] text-gray-500">
+                        {online ? `Gemt ${new Date(route.createdAt).toLocaleDateString('da-DK')}` : 'Gemt i offlinepakken'}
+                      </p>
+
+                      <button
+                        type="button"
+                        disabled={Boolean(loadingRouteId)}
+                        onClick={() => void loadSavedRoute(route.id)}
+                        className="btn-primary mt-4 flex items-center justify-center gap-2 px-4 py-2.5 text-sm disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {loadingRouteId === route.id ? (
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden="true" />
+                        ) : null}
+                        <span>{loadingRouteId === route.id ? 'Indlæser…' : 'Indlæs rute'}</span>
+                      </button>
                     </div>
                   ))}
                 </div>
