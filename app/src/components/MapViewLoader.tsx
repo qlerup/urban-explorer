@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ComponentProps } from 'react'
 import type * as Leaflet from 'leaflet'
 import MapView from './MapView'
+import OfflineMapManager from './OfflineMapManager'
 
 type Props = ComponentProps<typeof MapView>
 
@@ -10,6 +11,7 @@ type UrbanExplorerWindow = Window & {
   __urbanExplorerMapZoom?: number
   __urbanExplorerMapCenter?: [number, number]
   __urbanExplorerLeafletZoomHookInstalled?: boolean
+  __urbanExplorerLeafletMap?: Leaflet.Map
 }
 
 export default function MapViewLoader(props: Props) {
@@ -28,17 +30,21 @@ export default function MapViewLoader(props: Props) {
       const L = (leafletModule as unknown as { default?: typeof Leaflet }).default
         ?? (leafletModule as unknown as typeof Leaflet)
 
-      // Keep the current Leaflet view available to skraafoto and route planner.
+      // Keep the current Leaflet view available to skraafoto, route planner and offlinekort.
       const browserWindow = window as UrbanExplorerWindow
       if (!browserWindow.__urbanExplorerLeafletZoomHookInstalled) {
         L.Map.addInitHook(function (this: Leaflet.Map) {
+          browserWindow.__urbanExplorerLeafletMap = this
           const syncView = () => {
             const center = this.getCenter()
             browserWindow.__urbanExplorerMapZoom = this.getZoom()
             browserWindow.__urbanExplorerMapCenter = [center.lat, center.lng]
           }
           this.on('zoomend moveend', syncView)
-          this.whenReady(syncView)
+          this.whenReady(() => {
+            syncView()
+            window.dispatchEvent(new CustomEvent('urban-explorer-map-ready'))
+          })
         })
         browserWindow.__urbanExplorerLeafletZoomHookInstalled = true
       }
@@ -79,5 +85,14 @@ export default function MapViewLoader(props: Props) {
     )
   }
 
-  return <MapView {...props} />
+  return (
+    <div className="relative">
+      <MapView {...props} />
+      <OfflineMapManager
+        initialPins={props.initialPins}
+        categories={props.categories}
+        geodanmarkAvailable={Boolean(props.geodanmarkAvailable)}
+      />
+    </div>
+  )
 }
