@@ -581,7 +581,7 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
       <button
         type="button"
         onClick={() => { setError(null); void refreshAreas(); setShowList(true) }}
-        className="absolute right-2 top-24 z-[1200] rounded-xl border border-void-600 bg-void-900/95 px-3 py-2 text-xs font-semibold text-gray-100 shadow-xl backdrop-blur-sm hover:bg-void-800 md:bottom-4 md:right-4 md:top-auto"
+        className="absolute left-2 right-auto top-[20.5rem] z-[1200] rounded-xl border border-void-600 bg-void-900/95 px-3 py-2 text-xs font-semibold text-gray-100 shadow-xl backdrop-blur-sm hover:bg-void-800 md:bottom-4 md:left-auto md:right-4 md:top-auto"
       >
         ⬇ Offlinekort{!online ? ' · OFFLINE' : ''}
       </button>
