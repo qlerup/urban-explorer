@@ -75,17 +75,19 @@ const DEFAULT_ZOOM = 7
 const NO_CATEGORY = '__none__'
 const CURRENT_START_ID = '__current_start__'
 const CURRENT_END_ID = '__current_end__'
+
+// Faste farver pr. etape. 50 forskellige farver dækker normale ruter uden gentagelser.
 const ROUTE_LEG_COLORS = [
-  '#f59e0b', // orange
-  '#3b82f6', // blå
-  '#22c55e', // grøn
-  '#a855f7', // lilla
-  '#ec4899', // pink
-  '#06b6d4', // cyan
-  '#ef4444', // rød
-  '#eab308', // gul
-  '#14b8a6', // turkis
-  '#8b5cf6', // violet
+  '#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#ec4899',
+  '#06b6d4', '#ef4444', '#eab308', '#14b8a6', '#8b5cf6',
+  '#f97316', '#0ea5e9', '#84cc16', '#d946ef', '#f43f5e',
+  '#2dd4bf', '#dc2626', '#ca8a04', '#10b981', '#6366f1',
+  '#fb7185', '#38bdf8', '#4ade80', '#c084fc', '#f472b6',
+  '#67e8f9', '#f87171', '#facc15', '#5eead4', '#818cf8',
+  '#c2410c', '#0369a1', '#3f6212', '#7e22ce', '#be123c',
+  '#0f766e', '#991b1b', '#a16207', '#047857', '#4338ca',
+  '#ea580c', '#0284c7', '#65a30d', '#9333ea', '#db2777',
+  '#0891b2', '#b91c1c', '#b45309', '#059669', '#4f46e5',
 ]
 
 function escapeHtml(value: string): string {
@@ -687,21 +689,21 @@ export default function RoutePlannerMap({
                     const legDistance = formatDistance(leg.distanceKm)
                     const legColor = ROUTE_LEG_COLORS[index % ROUTE_LEG_COLORS.length]
                     return (
-                      <div
-                        key={`${leg.fromId}-${leg.toId}-${index}`}
-                        className="flex gap-3 px-3 py-3"
-                        style={{ borderLeft: `4px solid ${legColor}` }}
-                      >
-                        <div
-                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                          style={{ backgroundColor: legColor }}
-                        >
-                          {index + 1}
+                      <div key={`${leg.fromId}-${leg.toId}-${index}`} className="flex gap-3 px-3 py-3">
+                        <div className="flex w-7 shrink-0 flex-col items-center gap-1.5 pt-0.5">
+                          <span
+                            className="h-1 w-7 rounded-full shadow-sm"
+                            style={{ backgroundColor: legColor }}
+                            aria-hidden="true"
+                          />
+                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-void-700 text-[11px] font-bold text-gray-200">
+                            {index + 1}
+                          </div>
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-[12px] font-medium leading-4 text-gray-200">
                             <span className="break-words">{stopLabel(leg.fromId)}</span>
-                            <span className="mx-1.5" style={{ color: legColor }}>→</span>
+                            <span className="mx-1.5 text-gray-500">→</span>
                             <span className="break-words">{stopLabel(leg.toId)}</span>
                           </p>
                           <p className="mt-1 text-[11px] text-gray-400">
