@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type * as Leaflet from 'leaflet'
 import type { Category, Pin } from '@/types/pin'
 import RoutePlannerMap from '@/components/RoutePlannerMap'
+import OfflineMapManager from '@/components/OfflineMapManager'
 import { getActiveOfflineAreaId, listOfflineAreas, type OfflineMapArea } from '@/lib/offlineMaps'
 
 type MapProvider = 'maptiler' | 'esri'
@@ -50,6 +52,11 @@ interface Props {
   initialSavedRoute?: SavedRouteDetail | null
 }
 
+type BrowserWindow = Window & {
+  __urbanExplorerLeafletMap?: Leaflet.Map
+  __urbanExplorerOfflineMapHookInstalled?: boolean
+}
+
 function formatDuration(seconds: number | null): string {
   if (seconds === null || !Number.isFinite(seconds)) return 'Ukendt tid'
   const minutes = Math.max(1, Math.round(seconds / 60))
@@ -81,6 +88,38 @@ export default function RoutePlannerShell({
   const [savedRoutesError, setSavedRoutesError] = useState<string | null>(null)
   const [offlineArea, setOfflineArea] = useState<OfflineMapArea | null>(null)
   const [online, setOnline] = useState(true)
+  const [mapBridgeReady, setMapBridgeReady] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const prepareMapBridge = async () => {
+      const leafletModule = await import('leaflet')
+      const L = (leafletModule as unknown as { default?: typeof Leaflet }).default
+        ?? (leafletModule as unknown as typeof Leaflet)
+      const browserWindow = window as BrowserWindow
+
+      if (!browserWindow.__urbanExplorerOfflineMapHookInstalled) {
+        L.Map.addInitHook(function (this: Leaflet.Map) {
+          browserWindow.__urbanExplorerLeafletMap = this
+          this.whenReady(() => {
+            browserWindow.__urbanExplorerLeafletMap = this
+            window.dispatchEvent(new CustomEvent('urban-explorer-map-ready'))
+          })
+        })
+        browserWindow.__urbanExplorerOfflineMapHookInstalled = true
+      }
+
+      if (!cancelled) setMapBridgeReady(true)
+    }
+
+    void prepareMapBridge().catch(error => {
+      console.warn('[offline] Kortkoblingen til ruteplanlæggeren kunne ikke initialiseres:', error)
+      if (!cancelled) setMapBridgeReady(true)
+    })
+
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     setOnline(navigator.onLine)
@@ -166,20 +205,34 @@ export default function RoutePlannerShell({
 
   return (
     <div className="route-planner-shell relative">
-      <RoutePlannerMap
-        key={`${activeSavedRoute?.id ?? 'new'}-${routeInstance}-${online ? 'online' : 'offline'}`}
-        maptilerKey={maptilerKey}
-        mapProvider={mapProvider}
-        geodanmarkAvailable={geodanmarkAvailable || !online}
-        initialPins={initialPins}
-        categories={categories}
-        initialSavedRoute={activeSavedRoute}
-      />
+      {mapBridgeReady ? (
+        <RoutePlannerMap
+          key={`${activeSavedRoute?.id ?? 'new'}-${routeInstance}-${online ? 'online' : 'offline'}`}
+          maptilerKey={maptilerKey}
+          mapProvider={mapProvider}
+          geodanmarkAvailable={!online}
+          initialPins={initialPins}
+          categories={categories}
+          initialSavedRoute={activeSavedRoute}
+        />
+      ) : (
+        <div className="flex h-[calc(100dvh-4rem)] items-center justify-center bg-void-900 text-sm text-gray-500">
+          Indlæser kort...
+        </div>
+      )}
+
+      {mapBridgeReady && (
+        <OfflineMapManager
+          initialPins={initialPins}
+          categories={categories}
+          geodanmarkAvailable={geodanmarkAvailable}
+        />
+      )}
 
       <button
         type="button"
         onClick={() => void openSavedRoutes()}
-        className="btn-secondary absolute bottom-20 right-2 z-[900] whitespace-nowrap px-4 py-3 shadow-xl md:bottom-4 md:right-4"
+        className="btn-secondary absolute bottom-20 right-2 z-[900] whitespace-nowrap px-4 py-3 shadow-xl md:bottom-4 md:right-40"
       >
         🗂️ Gemte ruter{!online ? ' · OFFLINE' : ''}
       </button>
