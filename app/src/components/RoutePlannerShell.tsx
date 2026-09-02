@@ -232,7 +232,7 @@ export default function RoutePlannerShell({
       <button
         type="button"
         onClick={() => void openSavedRoutes()}
-        className="btn-secondary absolute bottom-20 right-2 z-[900] whitespace-nowrap px-4 py-3 shadow-xl md:bottom-4 md:right-40"
+        className="btn-secondary absolute bottom-5 right-2 z-[900] whitespace-nowrap px-4 py-3 shadow-xl md:bottom-4 md:right-40"
       >
         🗂️ Gemte ruter{!online ? ' · OFFLINE' : ''}
       </button>
