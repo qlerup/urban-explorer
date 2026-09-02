@@ -75,6 +75,18 @@ const DEFAULT_ZOOM = 7
 const NO_CATEGORY = '__none__'
 const CURRENT_START_ID = '__current_start__'
 const CURRENT_END_ID = '__current_end__'
+const ROUTE_LEG_COLORS = [
+  '#f59e0b', // orange
+  '#3b82f6', // blå
+  '#22c55e', // grøn
+  '#a855f7', // lilla
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#ef4444', // rød
+  '#eab308', // gul
+  '#14b8a6', // turkis
+  '#8b5cf6', // violet
+]
 
 function escapeHtml(value: string): string {
   return value
@@ -353,18 +365,18 @@ export default function RoutePlannerMap({
     if (!routeResult) return
 
     const allPoints: [number, number][] = []
-    for (const shape of routeResult.shapes) {
+    routeResult.shapes.forEach((shape, index) => {
       const points = decodePolyline6(shape)
-      if (points.length < 2) continue
+      if (points.length < 2) return
       allPoints.push(...points)
       L.polyline(points, {
-        color: '#f59e0b',
+        color: ROUTE_LEG_COLORS[index % ROUTE_LEG_COLORS.length],
         weight: 6,
-        opacity: 0.9,
+        opacity: 0.92,
         lineJoin: 'round',
         lineCap: 'round',
       }).addTo(layer)
-    }
+    })
 
     if (allPoints.length > 1) {
       map.fitBounds(L.latLngBounds(allPoints), { padding: [50, 50], maxZoom: 16 })
@@ -673,15 +685,23 @@ export default function RoutePlannerMap({
                   {routeResult.legs.map((leg, index) => {
                     const legDuration = formatDuration(leg.durationSeconds)
                     const legDistance = formatDistance(leg.distanceKm)
+                    const legColor = ROUTE_LEG_COLORS[index % ROUTE_LEG_COLORS.length]
                     return (
-                      <div key={`${leg.fromId}-${leg.toId}-${index}`} className="flex gap-3 px-3 py-3">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rust-600 text-[11px] font-bold text-white">
+                      <div
+                        key={`${leg.fromId}-${leg.toId}-${index}`}
+                        className="flex gap-3 px-3 py-3"
+                        style={{ borderLeft: `4px solid ${legColor}` }}
+                      >
+                        <div
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
+                          style={{ backgroundColor: legColor }}
+                        >
                           {index + 1}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-[12px] font-medium leading-4 text-gray-200">
                             <span className="break-words">{stopLabel(leg.fromId)}</span>
-                            <span className="mx-1.5 text-rust-400">→</span>
+                            <span className="mx-1.5" style={{ color: legColor }}>→</span>
                             <span className="break-words">{stopLabel(leg.toId)}</span>
                           </p>
                           <p className="mt-1 text-[11px] text-gray-400">
@@ -850,7 +870,7 @@ export default function RoutePlannerMap({
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-100">Gem rute</h2>
-                <p className="mt-1 text-sm text-gray-400">Ruten bliver gemt på din profil og kan indlæses igen senere.</p>
+                <p className="mt-1 text-sm text-gray-400">Ruten gemmes under Gemte ruter og kan indlæses igen senere.</p>
               </div>
               <button
                 type="button"
