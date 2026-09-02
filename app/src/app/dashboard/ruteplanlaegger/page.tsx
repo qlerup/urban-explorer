@@ -5,7 +5,7 @@ import { getPinsForUser } from '@/lib/pins'
 import { getCategoriesForUser, getCategoriesSharedWithUser } from '@/lib/categories'
 import { getMaptilerKey, getMapProvider } from '@/lib/settings'
 import { getSavedRouteForUser } from '@/lib/savedRoutes'
-import RoutePlannerMap from '@/components/RoutePlannerMap'
+import RoutePlannerShell from '@/components/RoutePlannerShell'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +47,7 @@ export default async function RoutePlannerPage({
   }
 
   return (
-    <RoutePlannerMap
+    <RoutePlannerShell
       maptilerKey={maptilerKey ?? ''}
       mapProvider={mapProvider}
       geodanmarkAvailable={false}
