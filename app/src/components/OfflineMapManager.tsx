@@ -46,6 +46,12 @@ interface DownloadProgress {
   bytes: number
 }
 
+interface OfflineRouteCheck {
+  route: OfflineSavedRoute
+  stopCount: number
+  outsideStops: string[]
+}
+
 const FALLBACK_TILE_BYTES = 85_000
 const DOWNLOAD_CONCURRENCY = 6
 
@@ -93,6 +99,25 @@ function routeTouchesBounds(route: OfflineSavedRoute, bounds: OfflineBounds): bo
     if (points.some(([lat, lng]) => pointInBounds(lat, lng, bounds))) return true
   }
   return false
+}
+
+function inspectRouteStops(route: OfflineSavedRoute, bounds: OfflineBounds, pins: Pin[]): OfflineRouteCheck {
+  const coordinates = route.routeData.stopCoordinates ?? {}
+  const orderedIds = route.routeData.orderedStopIds ?? []
+  const stopIds = [...new Set([...orderedIds, ...Object.keys(coordinates)])]
+  const pinNames = new Map(pins.map(pin => [pin.id, pin.name]))
+
+  const outsideStops = stopIds.flatMap(id => {
+    const point = coordinates[id]
+    if (!point || pointInBounds(point.lat, point.lng, bounds)) return []
+    return [route.routeData.stopLabels?.[id] || pinNames.get(id) || 'Ukendt stop']
+  })
+
+  return {
+    route,
+    stopCount: stopIds.length,
+    outsideStops: [...new Set(outsideStops)],
+  }
 }
 
 function defaultAreaName(): string {
@@ -210,6 +235,13 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
     () => downloadBounds ? routes.filter(route => routeTouchesBounds(route, downloadBounds)) : [],
     [downloadBounds, routes]
   )
+  const routeChecks = useMemo(
+    () => selectedBounds
+      ? routesInArea.map(route => inspectRouteStops(route, selectedBounds, sourcePins))
+      : [],
+    [routesInArea, selectedBounds, sourcePins]
+  )
+  const routesWithOutsideStops = routeChecks.filter(check => check.outsideStops.length > 0)
   const pinBytes = useMemo(() => jsonByteSize(pinsInArea), [pinsInArea])
   const routeBytes = useMemo(() => jsonByteSize(routesInArea), [routesInArea])
   const estimatedMapBytes = tiles.length * averageTileBytes
@@ -660,6 +692,72 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
                 <div className="border-t border-void-600 pt-2.5 flex items-center justify-between gap-4"><span className="font-semibold text-gray-200">I alt</span><span className="text-base font-bold text-rust-400">ca. {formatOfflineBytes(estimatedTotalBytes)}</span></div>
               </div>
               <p className="mt-3 text-[11px] leading-4 text-gray-500">{selectionAreaKm2.toLocaleString('da-DK', { maximumFractionDigits: 1 })} km² valgt · {tiles.length.toLocaleString('da-DK')} kortfelter. Pin-billeder lægges også i pakken; den endelige størrelse kan derfor være lidt større.</p>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-void-700 bg-void-800/50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-100">Ruter der kommer med</h3>
+                  <p className="mt-1 text-xs text-gray-500">Ruter der berører området eller sikkerhedsbufferen gemmes i offlineområdet.</p>
+                </div>
+                {!routesLoading && (
+                  <span className="rounded-full border border-void-600 bg-void-900 px-2.5 py-1 text-xs font-semibold text-gray-300">
+                    {routesInArea.length}
+                  </span>
+                )}
+              </div>
+
+              {routesLoading ? (
+                <div className="mt-4 flex items-center gap-2 text-xs text-gray-400">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-gray-500/40 border-t-gray-200" aria-hidden="true" />
+                  <span>Kontrollerer gemte ruter…</span>
+                </div>
+              ) : routeChecks.length === 0 ? (
+                <p className="mt-4 text-xs text-gray-500">Ingen gemte ruter berører det valgte område.</p>
+              ) : (
+                <div className="mt-4 space-y-2.5">
+                  {routeChecks.map(check => {
+                    const hasOutsideStops = check.outsideStops.length > 0
+                    return (
+                      <div
+                        key={check.route.id}
+                        className={`rounded-lg border p-3 ${hasOutsideStops ? 'border-amber-800/70 bg-amber-950/35' : 'border-void-600 bg-void-900/60'}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-100">{check.route.name}</p>
+                          <span className="shrink-0 text-[11px] text-gray-500">{check.stopCount} stop</span>
+                        </div>
+
+                        {hasOutsideStops ? (
+                          <>
+                            <p className="mt-2 text-xs font-semibold text-amber-300">
+                              ⚠ {check.outsideStops.length} {check.outsideStops.length === 1 ? 'stop ligger' : 'stop ligger'} uden for dit markerede område
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {check.outsideStops.map(stop => (
+                                <span key={stop} className="rounded-md border border-amber-800/60 bg-amber-950/60 px-2 py-1 text-[11px] text-amber-100">
+                                  {stop}
+                                </span>
+                              ))}
+                            </div>
+                            <p className="mt-2 text-[11px] leading-4 text-amber-200/70">
+                              Ruten gemmes stadig, men stop uden for området kan mangle luftfoto eller pin-data. Udvid området før download, hvis de skal dækkes med.
+                            </p>
+                          </>
+                        ) : (
+                          <p className="mt-2 text-xs text-green-300">✓ Alle rutens stop ligger i det markerede område.</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {!routesLoading && routesWithOutsideStops.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2 text-xs leading-5 text-amber-200">
+                  {routesWithOutsideStops.length} {routesWithOutsideStops.length === 1 ? 'rute har' : 'ruter har'} stop uden for dit markerede område. Du kan annullere og markere et større område, før du downloader.
+                </div>
+              )}
             </div>
 
             {tooManyTiles && (
