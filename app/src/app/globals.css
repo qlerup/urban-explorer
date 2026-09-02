@@ -70,6 +70,22 @@ body {
     display: none;
   }
 }
+
+/* Ruteplanlæggeren skal altid have +/- i højre side, også ved tablet/smalle desktop-bredder. */
+.route-planner-shell .leaflet-top.leaflet-left {
+  left: auto;
+  right: 0;
+}
+.route-planner-shell .leaflet-left .leaflet-control {
+  margin-left: 0;
+  margin-right: 10px;
+}
+@media (max-width: 767px) {
+  .route-planner-shell .leaflet-top.leaflet-right {
+    display: block;
+  }
+}
+
 .leaflet-control-attribution {
   background: rgba(13, 17, 23, 0.75) !important;
   color: #9ca3af !important;
