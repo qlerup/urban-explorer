@@ -2128,6 +2128,14 @@ export default function MapView({ maptilerKey, mapProvider, geodanmarkAvailable 
             </button>
             <button
               type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('urban-explorer-open-offline-maps'))}
+              aria-label="Offlinekort"
+              className="flex h-12 w-12 items-center justify-center rounded-full text-xl transition-colors active:bg-void-700"
+            >
+              ⬇️
+            </button>
+            <button
+              type="button"
               onClick={() => setMobileFiltersOpen(true)}
               aria-label="Filtre"
               className="flex h-12 w-12 items-center justify-center rounded-full text-gray-100 transition-colors active:bg-void-700"
