@@ -1,4 +1,4 @@
-const APP_CACHE = 'urban-explorer-app-shell-v2'
+const APP_CACHE = 'urban-explorer-app-shell-v3'
 const APP_CACHE_PREFIX = 'urban-explorer-app-shell-'
 const OFFLINE_MAP_CACHE_PREFIX = 'urban-explorer-offline-map-'
 
@@ -99,7 +99,17 @@ async function staticResponse(request) {
     if (network.ok) await cache.put(request, network.clone())
     return network
   } catch {
-    return cached || Response.error()
+    return (await findOfflineMapResponse(request)) || Response.error()
+  }
+}
+
+async function offlineAreaResponse(request) {
+  try {
+    const network = await fetch(request)
+    if (network.ok) return network
+    return network
+  } catch {
+    return (await findOfflineMapResponse(request)) || new Response(null, { status: 504 })
   }
 }
 
@@ -116,15 +126,12 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return
 
   if (url.pathname.startsWith('/api/map-tiles/geodanmark/')) {
-    event.respondWith((async () => {
-      try {
-        const network = await fetch(request)
-        if (network.ok) return network
-      } catch {
-        // Brug lokalt kort nedenfor.
-      }
-      return (await findOfflineMapResponse(request)) || new Response(null, { status: 504 })
-    })())
+    event.respondWith(offlineAreaResponse(request))
+    return
+  }
+
+  if (url.pathname.startsWith('/api/pins/') && url.pathname.includes('/images/')) {
+    event.respondWith(offlineAreaResponse(request))
     return
   }
 
