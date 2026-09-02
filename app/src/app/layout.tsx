@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import 'ol/ol.css'
 import './globals.css'
+import PwaServiceWorker from '@/components/PwaServiceWorker'
 
 export const metadata: Metadata = {
   title: 'Urban Explorer',
@@ -36,7 +37,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="da">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <PwaServiceWorker />
+        {children}
+      </body>
     </html>
   )
 }
