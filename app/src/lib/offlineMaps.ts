@@ -199,7 +199,8 @@ export function pointInBounds(lat: number, lng: number, bounds: OfflineBounds): 
 }
 
 export function formatOfflineBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return '0 MB'
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB'
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString('da-DK')} KB`
   const mb = bytes / 1024 / 1024
   if (mb < 1000) return `${mb.toLocaleString('da-DK', { maximumFractionDigits: mb < 10 ? 1 : 0 })} MB`
   return `${(mb / 1024).toLocaleString('da-DK', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} GB`
