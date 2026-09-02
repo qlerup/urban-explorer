@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 function shellAssetUrls(): string[] {
   const urls = new Set<string>([
     '/dashboard/kort',
+    '/dashboard/ruteplanlaegger',
     '/site.webmanifest',
     '/favicon.ico',
     '/favicon-32x32.png',
