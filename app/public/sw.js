@@ -1,9 +1,9 @@
-const APP_CACHE = 'urban-explorer-app-shell-v1'
+const APP_CACHE = 'urban-explorer-app-shell-v2'
 const APP_CACHE_PREFIX = 'urban-explorer-app-shell-'
 const OFFLINE_MAP_CACHE_PREFIX = 'urban-explorer-offline-map-'
 
 self.addEventListener('install', event => {
-  self.skipWaiting()
+  event.waitUntil(self.skipWaiting())
 })
 
 self.addEventListener('activate', event => {
@@ -16,14 +16,35 @@ self.addEventListener('activate', event => {
   })())
 })
 
+async function cacheOne(cache, rawUrl) {
+  const url = new URL(rawUrl, self.location.origin)
+  if (url.origin !== self.location.origin) return
+  const response = await fetch(new Request(url.toString(), { credentials: 'include', cache: 'reload' }))
+  if (!response.ok) return
+  await cache.put(url.toString(), response.clone())
+
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('text/html')) return
+
+  const html = await response.text()
+  const assetMatches = html.matchAll(/(?:src|href)=["'](\/_next\/static\/[^"']+)["']/g)
+  const assets = [...new Set(Array.from(assetMatches, match => match[1]))]
+  for (const asset of assets) {
+    try {
+      const assetUrl = new URL(asset, self.location.origin).toString()
+      const assetResponse = await fetch(new Request(assetUrl, { credentials: 'include', cache: 'reload' }))
+      if (assetResponse.ok) await cache.put(assetUrl, assetResponse.clone())
+    } catch {
+      // En manglende chunk må ikke stoppe resten af app-shell'en.
+    }
+  }
+}
+
 async function cacheShellUrls(urls) {
   const cache = await caches.open(APP_CACHE)
   for (const rawUrl of urls) {
     try {
-      const url = new URL(rawUrl, self.location.origin)
-      if (url.origin !== self.location.origin) continue
-      const response = await fetch(new Request(url.toString(), { credentials: 'include', cache: 'reload' }))
-      if (response.ok) await cache.put(url.toString(), response.clone())
+      await cacheOne(cache, rawUrl)
     } catch {
       // En enkelt ressource må ikke forhindre resten af app-shell'en i at blive gemt.
     }
@@ -48,20 +69,20 @@ async function findOfflineMapResponse(request) {
 }
 
 async function navigationResponse(request) {
+  const cache = await caches.open(APP_CACHE)
+  const url = new URL(request.url)
+  const canonicalUrl = new URL(url.pathname, self.location.origin).toString()
+
   try {
     const network = await fetch(request)
-    if (network.ok) {
-      const cache = await caches.open(APP_CACHE)
-      const url = new URL(request.url)
-      if (url.pathname === '/dashboard/kort') {
-        await cache.put(new URL('/dashboard/kort', self.location.origin).toString(), network.clone())
-      }
+    if (network.ok && (url.pathname === '/dashboard/kort' || url.pathname === '/dashboard/ruteplanlaegger')) {
+      await cache.put(canonicalUrl, network.clone())
     }
     return network
   } catch {
-    const cache = await caches.open(APP_CACHE)
-    return (await cache.match(new URL('/dashboard/kort', self.location.origin).toString()))
+    return (await cache.match(canonicalUrl))
       || (await cache.match(request))
+      || (await cache.match(new URL('/dashboard/kort', self.location.origin).toString()))
       || new Response('Urban Explorer er offline, og kortsiden er ikke gemt på denne enhed endnu.', {
         status: 503,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
