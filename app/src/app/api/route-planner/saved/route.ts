@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { createSavedRoute, type SavedRouteData } from '@/lib/savedRoutes'
+import { createSavedRoute, getSavedRoutesForUser, type SavedRouteData } from '@/lib/savedRoutes'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +29,28 @@ function isSavedRouteData(value: unknown): value is SavedRouteData {
     && typeof data.stopLabels === 'object'
     && !!data.stopCoordinates
     && typeof data.stopCoordinates === 'object'
+}
+
+export async function GET() {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Ikke logget ind' }, { status: 401 })
+
+  try {
+    const routes = await getSavedRoutesForUser(session.userId)
+    return NextResponse.json({
+      routes: routes.map(route => ({
+        id: route.id,
+        name: route.name,
+        distanceKm: route.distanceKm,
+        durationSeconds: route.durationSeconds,
+        pinCount: route.routeData.selectedPinIds.length,
+        createdAt: route.createdAt,
+      })),
+    })
+  } catch (error) {
+    console.error('[saved-routes] Kunne ikke hente gemte ruter:', error)
+    return NextResponse.json({ error: 'De gemte ruter kunne ikke hentes' }, { status: 500 })
+  }
 }
 
 export async function POST(request: NextRequest) {
