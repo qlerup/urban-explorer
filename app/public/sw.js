@@ -1,4 +1,4 @@
-const APP_CACHE = 'urban-explorer-app-shell-v4'
+const APP_CACHE = 'urban-explorer-app-shell-v5'
 const APP_CACHE_PREFIX = 'urban-explorer-app-shell-'
 const OFFLINE_MAP_CACHE_PREFIX = 'urban-explorer-offline-map-'
 
@@ -81,9 +81,9 @@ async function navigationResponse(request) {
     }
     return network
   } catch {
-    return (await cache.match(canonicalUrl))
-      || (await cache.match(request))
-      || (await cache.match(new URL('/dashboard/kort', self.location.origin).toString()))
+    return (await cache.match(canonicalUrl, { ignoreVary: true }))
+      || (await cache.match(request, { ignoreVary: true }))
+      || (await cache.match(new URL('/dashboard/kort', self.location.origin).toString(), { ignoreVary: true }))
       || new Response('Urban Explorer er offline, og kortsiden er ikke gemt på denne enhed endnu.', {
         status: 503,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
@@ -93,7 +93,7 @@ async function navigationResponse(request) {
 
 async function staticResponse(request) {
   const cache = await caches.open(APP_CACHE)
-  const cached = await cache.match(request)
+  const cached = await cache.match(request, { ignoreVary: true })
   if (cached) return cached
   try {
     const network = await fetch(request)
