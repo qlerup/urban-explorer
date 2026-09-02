@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Category, Pin } from '@/types/pin'
 import RoutePlannerMap from '@/components/RoutePlannerMap'
+import { getActiveOfflineAreaId, listOfflineAreas, type OfflineMapArea } from '@/lib/offlineMaps'
 
 type MapProvider = 'maptiler' | 'esri'
 
@@ -78,6 +79,27 @@ export default function RoutePlannerShell({
   const [loadingList, setLoadingList] = useState(false)
   const [loadingRouteId, setLoadingRouteId] = useState<string | null>(null)
   const [savedRoutesError, setSavedRoutesError] = useState<string | null>(null)
+  const [offlineArea, setOfflineArea] = useState<OfflineMapArea | null>(null)
+  const [online, setOnline] = useState(true)
+
+  useEffect(() => {
+    setOnline(navigator.onLine)
+    const handleOnline = () => setOnline(true)
+    const handleOffline = () => setOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  async function getOfflineArea(): Promise<OfflineMapArea | null> {
+    const activeId = getActiveOfflineAreaId()
+    if (!activeId) return null
+    const areas = await listOfflineAreas()
+    return areas.find(area => area.id === activeId) ?? null
+  }
 
   async function openSavedRoutes() {
     setShowSavedRoutes(true)
@@ -85,6 +107,22 @@ export default function RoutePlannerShell({
     setSavedRoutesError(null)
 
     try {
+      if (!navigator.onLine) {
+        const area = await getOfflineArea()
+        if (!area) throw new Error('Vælg først et downloadet område under Offlinekort.')
+        setOfflineArea(area)
+        setSavedRoutes(area.routes.map(route => ({
+          id: route.id,
+          name: route.name,
+          distanceKm: route.routeData.distanceKm,
+          durationSeconds: route.routeData.durationSeconds,
+          pinCount: route.routeData.selectedPinIds.length,
+          createdAt: area.updatedAt,
+        })))
+        return
+      }
+
+      setOfflineArea(null)
       const response = await fetch('/api/route-planner/saved', { cache: 'no-store' })
       const data = await response.json() as { routes?: SavedRouteSummary[]; error?: string }
       if (!response.ok) throw new Error(data.error || 'De gemte ruter kunne ikke hentes')
@@ -102,6 +140,16 @@ export default function RoutePlannerShell({
     setSavedRoutesError(null)
 
     try {
+      if (!navigator.onLine) {
+        const area = offlineArea ?? await getOfflineArea()
+        const route = area?.routes.find(item => item.id === routeId)
+        if (!route) throw new Error('Ruten findes ikke i det aktive offlineområde.')
+        setActiveSavedRoute({ id: route.id, name: route.name, routeData: route.routeData })
+        setRouteInstance(previous => previous + 1)
+        setShowSavedRoutes(false)
+        return
+      }
+
       const response = await fetch(`/api/route-planner/saved/${encodeURIComponent(routeId)}`, { cache: 'no-store' })
       const data = await response.json() as SavedRouteDetail & { error?: string }
       if (!response.ok || !data.id || !data.routeData) throw new Error(data.error || 'Ruten kunne ikke indlæses')
@@ -119,10 +167,10 @@ export default function RoutePlannerShell({
   return (
     <div className="route-planner-shell relative">
       <RoutePlannerMap
-        key={`${activeSavedRoute?.id ?? 'new'}-${routeInstance}`}
+        key={`${activeSavedRoute?.id ?? 'new'}-${routeInstance}-${online ? 'online' : 'offline'}`}
         maptilerKey={maptilerKey}
         mapProvider={mapProvider}
-        geodanmarkAvailable={geodanmarkAvailable}
+        geodanmarkAvailable={geodanmarkAvailable || !online}
         initialPins={initialPins}
         categories={categories}
         initialSavedRoute={activeSavedRoute}
@@ -133,7 +181,7 @@ export default function RoutePlannerShell({
         onClick={() => void openSavedRoutes()}
         className="btn-secondary absolute bottom-20 right-2 z-[900] whitespace-nowrap px-4 py-3 shadow-xl md:bottom-4 md:right-4"
       >
-        🗂️ Gemte ruter
+        🗂️ Gemte ruter{!online ? ' · OFFLINE' : ''}
       </button>
 
       {showSavedRoutes && (
@@ -148,7 +196,9 @@ export default function RoutePlannerShell({
             <div className="flex items-start justify-between gap-4 border-b border-void-700 px-5 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-100">Gemte ruter</h2>
-                <p className="mt-1 text-sm text-gray-400">Vælg en rute for at vise den på kortet.</p>
+                <p className="mt-1 text-sm text-gray-400">
+                  {online ? 'Vælg en rute for at vise den på kortet.' : `Offline · ${offlineArea?.name ?? 'aktivt område'}`}
+                </p>
               </div>
               <button
                 type="button"
@@ -165,7 +215,7 @@ export default function RoutePlannerShell({
               {loadingList ? (
                 <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-400">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-500/40 border-t-gray-200" aria-hidden="true" />
-                  <span>Henter gemte ruter…</span>
+                  <span>{online ? 'Henter gemte ruter…' : 'Åbner offline-ruter…'}</span>
                 </div>
               ) : savedRoutesError ? (
                 <div className="rounded-xl border border-red-900/60 bg-red-950/70 px-3 py-3 text-sm text-red-200">
@@ -173,7 +223,7 @@ export default function RoutePlannerShell({
                 </div>
               ) : savedRoutes.length === 0 ? (
                 <div className="py-10 text-center text-sm text-gray-500">
-                  Du har ikke gemt nogen ruter endnu.
+                  {online ? 'Du har ikke gemt nogen ruter endnu.' : 'Det aktive offlineområde indeholder ingen gemte ruter.'}
                 </div>
               ) : (
                 <div className="space-y-2.5">
@@ -186,7 +236,7 @@ export default function RoutePlannerShell({
                             {route.pinCount} pins · {formatDistance(route.distanceKm)} · {formatDuration(route.durationSeconds)}
                           </p>
                           <p className="mt-1 text-[11px] text-gray-600">
-                            Gemt {new Date(route.createdAt).toLocaleDateString('da-DK')}
+                            {online ? `Gemt ${new Date(route.createdAt).toLocaleDateString('da-DK')}` : 'Gemt i offlinepakken'}
                           </p>
                         </div>
                         <button
