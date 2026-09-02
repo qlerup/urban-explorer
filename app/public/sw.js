@@ -1,4 +1,4 @@
-const APP_CACHE = 'urban-explorer-app-shell-v3'
+const APP_CACHE = 'urban-explorer-app-shell-v4'
 const APP_CACHE_PREFIX = 'urban-explorer-app-shell-'
 const OFFLINE_MAP_CACHE_PREFIX = 'urban-explorer-offline-map-'
 
@@ -42,7 +42,8 @@ async function cacheOne(cache, rawUrl) {
 
 async function cacheShellUrls(urls) {
   const cache = await caches.open(APP_CACHE)
-  for (const rawUrl of urls) {
+  const requiredUrls = [...new Set(['/dashboard/kort', '/dashboard/ruteplanlaegger', ...urls])]
+  for (const rawUrl of requiredUrls) {
     try {
       await cacheOne(cache, rawUrl)
     } catch {
