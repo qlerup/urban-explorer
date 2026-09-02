@@ -117,7 +117,7 @@ export default function RoutePlannerShell({
   }
 
   return (
-    <div className="relative">
+    <div className="route-planner-shell relative">
       <RoutePlannerMap
         key={`${activeSavedRoute?.id ?? 'new'}-${routeInstance}`}
         maptilerKey={maptilerKey}
