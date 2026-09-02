@@ -113,6 +113,7 @@ function tileUrl(z: number, x: number, y: number): string {
 function currentShellUrls(): string[] {
   const urls = new Set<string>([
     '/dashboard/kort',
+    '/dashboard/ruteplanlaegger',
     '/site.webmanifest',
     '/favicon.ico',
     '/android-chrome-192x192.png',
@@ -145,9 +146,11 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
   const [showList, setShowList] = useState(false)
   const [showConfigure, setShowConfigure] = useState(false)
   const [selecting, setSelecting] = useState(false)
+  const [selectionStep, setSelectionStep] = useState<0 | 1>(0)
   const [selectedBounds, setSelectedBounds] = useState<OfflineBounds | null>(null)
   const [quality, setQuality] = useState<OfflineMapQuality>('standard')
   const [areaName, setAreaName] = useState(defaultAreaName)
+  const [sourcePins, setSourcePins] = useState<Pin[]>(initialPins)
   const [routes, setRoutes] = useState<OfflineSavedRoute[]>([])
   const [routesLoading, setRoutesLoading] = useState(false)
   const [averageTileBytes, setAverageTileBytes] = useState(FALLBACK_TILE_BYTES)
@@ -160,10 +163,6 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
   const firstCornerRef = useRef<Leaflet.LatLng | null>(null)
   const selectionLayerRef = useRef<Leaflet.LayerGroup | null>(null)
   const offlineBaseLayerRef = useRef<Leaflet.TileLayer | null>(null)
-
-  const map = typeof window !== 'undefined'
-    ? (window as BrowserWindow).__urbanExplorerLeafletMap ?? null
-    : null
 
   async function refreshAreas() {
     try {
@@ -203,9 +202,9 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
   )
   const pinsInArea = useMemo(
     () => downloadBounds
-      ? initialPins.filter(pin => pointInBounds(pin.latitude, pin.longitude, downloadBounds))
+      ? sourcePins.filter(pin => pointInBounds(pin.latitude, pin.longitude, downloadBounds))
       : [],
-    [downloadBounds, initialPins]
+    [downloadBounds, sourcePins]
   )
   const routesInArea = useMemo(
     () => downloadBounds ? routes.filter(route => routeTouchesBounds(route, downloadBounds)) : [],
@@ -230,6 +229,7 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
         ?? (leafletModule as unknown as typeof Leaflet)
 
       firstCornerRef.current = null
+      setSelectionStep(0)
       selectionLayerRef.current?.remove()
       selectionLayerRef.current = L.layerGroup().addTo(activeMap)
       const container = activeMap.getContainer()
@@ -239,6 +239,7 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
       const handleClick = (event: Leaflet.LeafletMouseEvent) => {
         if (!firstCornerRef.current) {
           firstCornerRef.current = event.latlng
+          setSelectionStep(1)
           L.circleMarker(event.latlng, {
             radius: 7,
             color: '#f59e0b',
@@ -283,9 +284,20 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
     if (!showConfigure || !downloadBounds || !online) return
     let cancelled = false
 
-    const loadRoutesAndEstimate = async () => {
+    const loadPackageDataAndEstimate = async () => {
       setRoutesLoading(true)
       setEstimating(true)
+
+      try {
+        const pinsResponse = await fetch('/api/pins', { cache: 'no-store' })
+        if (pinsResponse.ok) {
+          const data = await pinsResponse.json() as { pins?: Pin[] }
+          if (!cancelled && Array.isArray(data.pins)) setSourcePins(data.pins)
+        }
+      } catch {
+        // initialPins er fallback, hvis et frisk pin-opslag fejler.
+      }
+
       try {
         const routeResponse = await fetch('/api/route-planner/saved', { cache: 'no-store' })
         if (routeResponse.ok) {
@@ -331,7 +343,7 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
       }
     }
 
-    void loadRoutesAndEstimate()
+    void loadPackageDataAndEstimate()
     return () => { cancelled = true }
   }, [showConfigure, downloadBounds, online, maxZoom])
 
@@ -386,13 +398,24 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
     setShowList(false)
     setShowConfigure(false)
     setSelectedBounds(null)
+    setSelectionStep(0)
     setError(null)
     setSelecting(true)
   }
 
   function cancelSelection() {
     setSelecting(false)
+    setSelectionStep(0)
     firstCornerRef.current = null
+    selectionLayerRef.current?.remove()
+    selectionLayerRef.current = null
+  }
+
+  function closeConfigure() {
+    if (downloading) return
+    setShowConfigure(false)
+    setSelectedBounds(null)
+    setError(null)
     selectionLayerRef.current?.remove()
     selectionLayerRef.current = null
   }
@@ -453,6 +476,7 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
 
       await Promise.all(Array.from({ length: Math.min(DOWNLOAD_CONCURRENCY, tiles.length) }, () => worker()))
 
+      let pinAssetBytes = 0
       const localAssetUrls = new Set<string>()
       for (const pin of pinsInArea) {
         if (pin.icon.startsWith('/')) localAssetUrls.add(pin.icon)
@@ -467,12 +491,16 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
         try {
           const request = new Request(url, { credentials: 'include' })
           const response = await fetch(request)
-          if (response.ok) await cache.put(request, response)
+          if (response.ok) {
+            pinAssetBytes += (await response.clone().blob()).size
+            await cache.put(request, response)
+          }
         } catch {
           // Et manglende pin-billede må ikke ødelægge hele kortpakken.
         }
       }
 
+      const finalPinBytes = pinBytes + pinAssetBytes
       const now = new Date().toISOString()
       const area: OfflineMapArea = {
         id,
@@ -484,9 +512,9 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
         maxZoom,
         tileCount: tiles.length,
         mapBytes: bytes,
-        pinBytes,
+        pinBytes: finalPinBytes,
         routeBytes,
-        totalBytes: bytes + pinBytes + routeBytes,
+        totalBytes: bytes + finalPinBytes + routeBytes,
         pins: pinsInArea,
         categories,
         routes: routesInArea,
@@ -521,7 +549,7 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
       <button
         type="button"
         onClick={() => { setError(null); void refreshAreas(); setShowList(true) }}
-        className="absolute right-2 top-24 z-[1200] rounded-xl border border-void-600 bg-void-900/95 px-3 py-2 text-xs font-semibold text-gray-100 shadow-xl backdrop-blur-sm hover:bg-void-800 md:right-4"
+        className="absolute right-2 top-24 z-[1200] rounded-xl border border-void-600 bg-void-900/95 px-3 py-2 text-xs font-semibold text-gray-100 shadow-xl backdrop-blur-sm hover:bg-void-800 md:bottom-4 md:right-4 md:top-auto"
       >
         ⬇ Offlinekort{!online ? ' · OFFLINE' : ''}
       </button>
@@ -529,7 +557,7 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
       {selecting && (
         <div className="absolute left-1/2 top-3 z-[1600] w-[min(92vw,460px)] -translate-x-1/2 rounded-xl border border-rust-700/70 bg-void-900/95 px-4 py-3 text-center shadow-2xl backdrop-blur-sm">
           <p className="text-sm font-semibold text-gray-100">
-            {firstCornerRef.current ? 'Tryk på modsatte hjørne' : 'Vælg første hjørne af offlineområdet'}
+            {selectionStep === 1 ? 'Tryk på modsatte hjørne' : 'Vælg første hjørne af offlineområdet'}
           </p>
           <p className="mt-1 text-xs text-gray-400">Området får automatisk {OFFLINE_BUFFER_KM} km sikkerhedsbuffer.</p>
           <button type="button" onClick={cancelSelection} className="btn-secondary mt-3 px-3 py-2 text-xs">
@@ -599,14 +627,14 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
       )}
 
       {showConfigure && selectedBounds && downloadBounds && (
-        <div className="fixed inset-0 z-[3100] flex items-center justify-center bg-black/70 px-4" onClick={() => { if (!downloading) setShowConfigure(false) }}>
+        <div className="fixed inset-0 z-[3100] flex items-center justify-center bg-black/70 px-4" onClick={closeConfigure}>
           <div className="max-h-[88dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-void-700 bg-void-900 p-5 shadow-2xl" onClick={event => event.stopPropagation()}>
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-100">Gem område offline</h2>
                 <p className="mt-1 text-sm text-gray-400">GeoDanmark luftfoto + dine Urban Explorer-data.</p>
               </div>
-              <button type="button" disabled={downloading} onClick={() => setShowConfigure(false)} className="text-2xl leading-none text-gray-500 hover:text-gray-200 disabled:opacity-40">×</button>
+              <button type="button" disabled={downloading} onClick={closeConfigure} className="text-2xl leading-none text-gray-500 hover:text-gray-200 disabled:opacity-40">×</button>
             </div>
 
             <label className="block">
@@ -631,7 +659,7 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
                 <div className="flex items-center justify-between gap-4"><span className="text-gray-300">Gemte ruter ({routesLoading ? '…' : routesInArea.length})</span><span className="font-medium text-gray-100">{routesLoading ? 'Henter…' : formatOfflineBytes(routeBytes)}</span></div>
                 <div className="border-t border-void-600 pt-2.5 flex items-center justify-between gap-4"><span className="font-semibold text-gray-200">I alt</span><span className="text-base font-bold text-rust-400">ca. {formatOfflineBytes(estimatedTotalBytes)}</span></div>
               </div>
-              <p className="mt-3 text-[11px] leading-4 text-gray-500">{selectionAreaKm2.toLocaleString('da-DK', { maximumFractionDigits: 1 })} km² valgt · {tiles.length.toLocaleString('da-DK')} kortfelter. Størrelsen er et estimat og kan variere.</p>
+              <p className="mt-3 text-[11px] leading-4 text-gray-500">{selectionAreaKm2.toLocaleString('da-DK', { maximumFractionDigits: 1 })} km² valgt · {tiles.length.toLocaleString('da-DK')} kortfelter. Pin-billeder lægges også i pakken; den endelige størrelse kan derfor være lidt større.</p>
             </div>
 
             {tooManyTiles && (
@@ -650,7 +678,7 @@ export default function OfflineMapManager({ initialPins, categories, geodanmarkA
             )}
 
             <div className="mt-6 flex justify-end gap-2">
-              <button type="button" disabled={downloading} onClick={() => setShowConfigure(false)} className="btn-secondary px-4 py-2.5 disabled:opacity-40">Annuller</button>
+              <button type="button" disabled={downloading} onClick={closeConfigure} className="btn-secondary px-4 py-2.5 disabled:opacity-40">Annuller</button>
               <button
                 type="button"
                 disabled={downloading || tooManyTiles || estimating || routesLoading || tiles.length === 0}
