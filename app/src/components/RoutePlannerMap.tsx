@@ -50,6 +50,12 @@ interface InitialSavedRoute {
   routeData: RouteResult
 }
 
+interface StoredNavProgress {
+  destinationIds: string[]
+  index: number
+  started: boolean
+}
+
 interface Props {
   maptilerKey: string
   mapProvider: MapProvider
@@ -164,6 +170,47 @@ function baseTileConfig(mapProvider: MapProvider, maptilerKey: string, geodanmar
   }
 }
 
+function computeDestinationIds(result: RouteResult | null): string[] {
+  if (!result) return []
+  return result.orderedStopIds.filter(id => id !== CURRENT_START_ID && id !== CURRENT_END_ID)
+}
+
+function navStorageKey(savedRouteId: string | null): string {
+  return `urbanExplorerNav:${savedRouteId ?? 'draft'}`
+}
+
+function loadNavProgress(savedRouteId: string | null): StoredNavProgress | null {
+  try {
+    const raw = window.localStorage.getItem(navStorageKey(savedRouteId))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<StoredNavProgress>
+    if (!Array.isArray(parsed.destinationIds) || typeof parsed.index !== 'number' || typeof parsed.started !== 'boolean') return null
+    return { destinationIds: parsed.destinationIds, index: parsed.index, started: parsed.started }
+  } catch {
+    return null
+  }
+}
+
+function saveNavProgress(savedRouteId: string | null, progress: StoredNavProgress) {
+  try {
+    window.localStorage.setItem(navStorageKey(savedRouteId), JSON.stringify(progress))
+  } catch {
+    // localStorage utilgængeligt (privat vindue e.l.) - ruten kan stadig bruges, blot uden gemt fremdrift
+  }
+}
+
+function clearNavProgress(savedRouteId: string | null) {
+  try {
+    window.localStorage.removeItem(navStorageKey(savedRouteId))
+  } catch {
+    // se saveNavProgress
+  }
+}
+
+function googleMapsDirectionsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`
+}
+
 function getCurrentPosition(): Promise<{ lat: number; lng: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -217,6 +264,9 @@ export default function RoutePlannerMap({
   const [saveName, setSaveName] = useState('')
   const [savingRoute, setSavingRoute] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [navStarted, setNavStarted] = useState(false)
+  const [navIndex, setNavIndex] = useState(0)
+  const [showStartNavModal, setShowStartNavModal] = useState(false)
   const [activeCategoryIds, setActiveCategoryIds] = useState<Set<string>>(
     () => new Set([...categories.map(category => category.id), NO_CATEGORY])
   )
@@ -233,6 +283,29 @@ export default function RoutePlannerMap({
   const selectedPins = useMemo(() => selectedIds
     .map(id => initialPins.find(pin => pin.id === id))
     .filter((pin): pin is Pin => Boolean(pin)), [selectedIds, initialPins])
+
+  const destinationIds = useMemo(() => computeDestinationIds(routeResult), [routeResult])
+
+  useEffect(() => {
+    if (destinationIds.length === 0) {
+      setNavStarted(false)
+      setNavIndex(0)
+      return
+    }
+
+    const stored = loadNavProgress(savedRouteId)
+    const matches = stored
+      && stored.destinationIds.length === destinationIds.length
+      && stored.destinationIds.every((id, index) => id === destinationIds[index])
+
+    if (matches && stored) {
+      setNavStarted(stored.started)
+      setNavIndex(Math.min(Math.max(stored.index, 0), destinationIds.length))
+    } else {
+      setNavStarted(false)
+      setNavIndex(0)
+    }
+  }, [savedRouteId, destinationIds])
 
   function stopLabel(id: string | null): string {
     if (!id) return 'Ukendt stop'
@@ -586,8 +659,51 @@ export default function RoutePlannerMap({
     }
   }
 
+  function openMapsFor(stopId: string) {
+    const coords = routeResult?.stopCoordinates?.[stopId]
+    if (!coords) return
+    window.open(googleMapsDirectionsUrl(coords.lat, coords.lng), '_blank', 'noopener,noreferrer')
+  }
+
+  function openStartNavigation() {
+    if (destinationIds.length === 0) return
+    setShowStartNavModal(true)
+  }
+
+  function confirmStartNavigation() {
+    if (destinationIds.length === 0) return
+    openMapsFor(destinationIds[0])
+    const nextIndex = 1
+    setNavStarted(true)
+    setNavIndex(nextIndex)
+    saveNavProgress(savedRouteId, { destinationIds, index: nextIndex, started: true })
+    setShowStartNavModal(false)
+  }
+
+  function continueNavigation() {
+    if (navIndex >= destinationIds.length) return
+    openMapsFor(destinationIds[navIndex])
+    const nextIndex = navIndex + 1
+    setNavIndex(nextIndex)
+    saveNavProgress(savedRouteId, { destinationIds, index: nextIndex, started: true })
+  }
+
+  function skipCurrentStop() {
+    if (navIndex >= destinationIds.length) return
+    const nextIndex = navIndex + 1
+    setNavIndex(nextIndex)
+    saveNavProgress(savedRouteId, { destinationIds, index: nextIndex, started: true })
+  }
+
+  function restartNavigation() {
+    setNavStarted(false)
+    setNavIndex(0)
+    clearNavProgress(savedRouteId)
+  }
+
   const duration = formatDuration(routeResult?.durationSeconds ?? null)
   const distanceLabel = formatDistance(routeResult?.distanceKm ?? null)
+  const navCompleted = navStarted && navIndex >= destinationIds.length
 
   return (
     <div className="relative h-[calc(100dvh-4rem)] min-h-[520px] w-full overflow-hidden bg-void-950">
@@ -662,6 +778,13 @@ export default function RoutePlannerMap({
               {distanceLabel ? ` · ${distanceLabel}` : ''}
               {duration ? ` · ${duration}` : ''}
             </p>
+            {navStarted && (
+              <p className="mt-1 text-[11px] font-medium text-rust-400">
+                {navCompleted
+                  ? 'Rute gennemført 🎉'
+                  : `På vej til stop ${navIndex + 1} af ${destinationIds.length}: ${stopLabel(destinationIds[navIndex])}`}
+              </p>
+            )}
           </div>
 
           {routeResult.legs.length > 0 && (
@@ -752,6 +875,29 @@ export default function RoutePlannerMap({
 
         {routeResult && (
           <>
+            {!navStarted && (
+              <button type="button" onClick={openStartNavigation} className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl">
+                Start rute
+              </button>
+            )}
+
+            {navStarted && !navCompleted && (
+              <>
+                <button type="button" onClick={continueNavigation} className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl">
+                  Naviger til {stopLabel(destinationIds[navIndex])}
+                </button>
+                <button type="button" onClick={skipCurrentStop} className="btn-secondary whitespace-nowrap px-4 py-3 shadow-xl">
+                  Spring pin over
+                </button>
+              </>
+            )}
+
+            {navCompleted && (
+              <button type="button" onClick={restartNavigation} className="btn-secondary whitespace-nowrap px-4 py-3 shadow-xl">
+                Start rute forfra
+              </button>
+            )}
+
             <button
               type="button"
               onClick={openSaveRoute}
@@ -760,7 +906,7 @@ export default function RoutePlannerMap({
             >
               {savedRouteId ? '✓ Rute gemt' : 'Gem rute'}
             </button>
-            <button type="button" onClick={startSelecting} className="btn-primary whitespace-nowrap px-5 py-3 shadow-xl">
+            <button type="button" onClick={startSelecting} className="btn-secondary whitespace-nowrap px-4 py-3 shadow-xl">
               Vælg pins igen
             </button>
           </>
@@ -854,6 +1000,44 @@ export default function RoutePlannerMap({
                     <span>Beregner rute…</span>
                   </>
                 ) : 'Lav ruten'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showStartNavModal && routeResult && destinationIds.length > 0 && (
+        <div
+          className="fixed inset-0 z-[2200] flex items-center justify-center bg-black/65 px-4"
+          onClick={() => setShowStartNavModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-void-700 bg-void-900 p-5 shadow-2xl"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-100">Start rute</h2>
+                <p className="mt-1 text-sm text-gray-400">
+                  Navigationen starter til første stop: <span className="font-medium text-gray-200">{stopLabel(destinationIds[0])}</span>.
+                  Google Maps åbner i en ny fane. Kom tilbage hertil undervejs, så ved appen automatisk hvilket stop der er næste i rækken.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowStartNavModal(false)}
+                className="text-2xl leading-none text-gray-500 hover:text-gray-200"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setShowStartNavModal(false)} className="btn-secondary px-4 py-2.5">
+                Annuller
+              </button>
+              <button type="button" onClick={confirmStartNavigation} className="btn-primary px-5 py-2.5">
+                Åbn i Google Maps
               </button>
             </div>
           </div>
