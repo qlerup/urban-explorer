@@ -78,6 +78,34 @@ export async function saveSmtpSettings(input: {
   )
 }
 
+export async function sendTestEmail(input: {
+  user: string
+  password: string
+  host: string
+  port: number
+  fromAddress: string
+  testTo: string
+}): Promise<void> {
+  // Admin-only diagnostic send using NOT-YET-SAVED settings, so a broken send (e.g.
+  // an unverified sender domain) is caught before it's persisted - a login-only
+  // check can't catch that, since it never actually attempts delivery.
+  const user = String(input.user || '').trim()
+  const password = String(input.password || '').replace(/\s+/g, '')
+  const host = String(input.host || 'smtp.gmail.com').trim()
+  const port = Number(input.port) || 465
+  const fromAddress = normalizeEmail(input.fromAddress || '')
+  const testTo = normalizeEmail(input.testTo || '')
+  if (!user || !password) throw new Error('SMTP-brugernavn og adgangskode/API-nøgle er påkrævet')
+  if (!fromAddress) throw new Error('Afsenderadressen skal være en gyldig email')
+  if (!testTo) throw new Error('Angiv en gyldig email at sende testmailen til')
+  await transport({ user, password, host, port, fromAddress }).sendMail({
+    from: { name: 'Urban Explorer', address: fromAddress },
+    to: testTo,
+    subject: 'Testmail fra Urban Explorer',
+    text: 'Hej\n\nDette er en testmail fra Urban Explorer for at bekræfte at mailopsætningen virker.\n\nHvis du kan læse denne mail, er opsætningen klar til brug.',
+  })
+}
+
 export async function sendPasswordResetCode(to: string, code: string): Promise<void> {
   const settings = await getSmtpSettings()
   if (!settings) throw new Error('Mailafsendelse er ikke konfigureret')
