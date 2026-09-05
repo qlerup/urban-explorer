@@ -7,20 +7,25 @@ export interface SmtpSettings {
   password: string
   host: string
   port: number
+  fromAddress: string
 }
 
 export async function getSmtpSettings(): Promise<SmtpSettings | null> {
   const result = await pool.query(
-    'SELECT smtp_user, smtp_password, smtp_host, smtp_port FROM app_settings WHERE id = 1'
+    'SELECT smtp_user, smtp_password, smtp_host, smtp_port, smtp_from FROM app_settings WHERE id = 1'
   )
   const row = result.rows[0]
   if (!row?.smtp_user || !row?.smtp_password) return null
   try {
+    const user = decrypt(row.smtp_user)
     return {
-      user: decrypt(row.smtp_user),
+      user,
       password: decrypt(row.smtp_password),
       host: row.smtp_host || 'smtp.gmail.com',
       port: Number(row.smtp_port) || 465,
+      // Older configs (saved before this field existed) always had an
+      // email-shaped smtp_user and used it directly as the sender address.
+      fromAddress: row.smtp_from || user,
     }
   } catch {
     return null
@@ -41,28 +46,35 @@ export async function saveSmtpSettings(input: {
   password?: string
   host?: string
   port?: number
+  fromAddress?: string
 }): Promise<void> {
-  const user = normalizeEmail(input.user)
+  // The SMTP auth username isn't necessarily an email (Resend's is literally
+  // "resend"), so unlike fromAddress it isn't run through normalizeEmail.
+  const user = String(input.user || '').trim()
   const existing = await getSmtpSettings()
   const password = String(input.password || '').replace(/\s+/g, '') || existing?.password
-  if (!user || !password) throw new Error('Email og app-adgangskode er påkrævet')
+  const fromAddress = normalizeEmail(input.fromAddress || '') || normalizeEmail(user)
+  if (!user || !password) throw new Error('SMTP-brugernavn og adgangskode/API-nøgle er påkrævet')
+  if (!fromAddress) throw new Error('Afsenderadressen skal være en gyldig email')
   const settings = {
     user,
     password,
     host: String(input.host || 'smtp.gmail.com').trim(),
     port: Number(input.port) || 465,
+    fromAddress,
   }
   await transport(settings).verify()
   await pool.query(
-    `INSERT INTO app_settings (id, smtp_user, smtp_password, smtp_host, smtp_port, updated_at)
-     VALUES (1, $1, $2, $3, $4, NOW())
+    `INSERT INTO app_settings (id, smtp_user, smtp_password, smtp_host, smtp_port, smtp_from, updated_at)
+     VALUES (1, $1, $2, $3, $4, $5, NOW())
      ON CONFLICT (id) DO UPDATE SET
        smtp_user = EXCLUDED.smtp_user,
        smtp_password = EXCLUDED.smtp_password,
        smtp_host = EXCLUDED.smtp_host,
        smtp_port = EXCLUDED.smtp_port,
+       smtp_from = EXCLUDED.smtp_from,
        updated_at = NOW()`,
-    [encrypt(settings.user), encrypt(settings.password), settings.host, settings.port]
+    [encrypt(settings.user), encrypt(settings.password), settings.host, settings.port, settings.fromAddress]
   )
 }
 
@@ -73,7 +85,7 @@ export async function sendPasswordResetCode(to: string, code: string): Promise<v
     `Hej\n\nDin sikkerhedskode til Urban Explorer er: ${code}\n\n` +
     'Koden udløber om 5 minutter. Hvis du ikke har bedt om den, kan du ignorere denne mail.'
   await transport(settings).sendMail({
-    from: { name: 'Urban Explorer', address: settings.user },
+    from: { name: 'Urban Explorer', address: settings.fromAddress },
     to,
     subject: `${code} er din sikkerhedskode til Urban Explorer`,
     text,

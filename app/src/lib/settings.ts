@@ -45,3 +45,20 @@ export async function setMapProvider(provider: MapProvider): Promise<void> {
     [provider]
   )
 }
+
+// Independent of hub-managed status - each app decides for itself whether to
+// offer "forgot password" at all, even though the actual mail may be sent
+// via FjordHub's shared configuration.
+export async function getForgotPasswordEnabled(): Promise<boolean> {
+  const result = await pool.query('SELECT forgot_password_enabled FROM app_settings WHERE id = 1')
+  const value = result.rows[0]?.forgot_password_enabled
+  return value === null || value === undefined ? true : Boolean(value)
+}
+
+export async function setForgotPasswordEnabled(enabled: boolean): Promise<void> {
+  await pool.query(
+    `INSERT INTO app_settings (id, forgot_password_enabled, updated_at) VALUES (1, $1, NOW())
+     ON CONFLICT (id) DO UPDATE SET forgot_password_enabled = EXCLUDED.forgot_password_enabled, updated_at = NOW()`,
+    [enabled]
+  )
+}

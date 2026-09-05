@@ -1,9 +1,12 @@
+import { redirect } from 'next/navigation'
 import PasswordResetForm from '@/components/PasswordResetForm'
 import { isFjordHubManaged } from '@/lib/fjordhub'
+import { getForgotPasswordEnabled } from '@/lib/settings'
 
 export const dynamic = 'force-dynamic'
 
-export default function ForgotPasswordPage() {
+export default async function ForgotPasswordPage() {
+  if (!(await getForgotPasswordEnabled())) redirect('/login')
   const hubManaged = isFjordHubManaged()
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-void-950 px-4">

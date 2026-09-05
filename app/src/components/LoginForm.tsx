@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-export default function LoginForm({ hubManaged = false }: { hubManaged?: boolean }) {
+export default function LoginForm({ hubManaged = false, forgotPasswordEnabled = true }: { hubManaged?: boolean; forgotPasswordEnabled?: boolean }) {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -148,11 +148,13 @@ export default function LoginForm({ hubManaged = false }: { hubManaged?: boolean
       <button type="submit" className="btn-primary" disabled={loading}>
         {loading ? 'Logger ind...' : 'Log ind'}
       </button>
-      <div className="text-center">
-        <Link href="/glemt-adgangskode" className="text-sm text-ember-400 hover:text-ember-300">
-          Glemt adgangskode?
-        </Link>
-      </div>
+      {forgotPasswordEnabled && (
+        <div className="text-center">
+          <Link href="/glemt-adgangskode" className="text-sm text-ember-400 hover:text-ember-300">
+            Glemt adgangskode?
+          </Link>
+        </div>
+      )}
     </form>
   )
 }

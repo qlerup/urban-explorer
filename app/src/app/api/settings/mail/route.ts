@@ -20,6 +20,7 @@ export async function GET() {
     user: settings?.user || '',
     host: settings?.host || 'smtp.gmail.com',
     port: settings?.port || 465,
+    fromAddress: settings?.fromAddress || '',
   })
 }
 

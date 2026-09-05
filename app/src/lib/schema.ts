@@ -127,6 +127,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
     smtp_password          TEXT,
     smtp_host              TEXT,
     smtp_port              INTEGER,
+    smtp_from              TEXT,
+    forgot_password_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     map_provider           TEXT NOT NULL DEFAULT 'esri',
     dataforsyningen_token  TEXT,
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -136,6 +138,12 @@ ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_user TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_password TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_host TEXT;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_port INTEGER;
+-- SMTP auth username isn't always an email (e.g. Resend's is literally "resend"),
+-- so the address shown to recipients needs its own column.
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS smtp_from TEXT;
+-- Lets an admin turn "forgot password" off entirely, independent of hub-managed
+-- status - each app decides for itself whether to offer it.
+ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS forgot_password_enabled BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS map_provider TEXT NOT NULL DEFAULT 'esri';
 ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS dataforsyningen_token TEXT;
 

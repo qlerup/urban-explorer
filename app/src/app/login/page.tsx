@@ -2,12 +2,14 @@ import { redirect } from 'next/navigation'
 import pool from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import { isFjordHubManaged } from '@/lib/fjordhub'
+import { getForgotPasswordEnabled } from '@/lib/settings'
 import LoginForm from '@/components/LoginForm'
 
 export const dynamic = 'force-dynamic'
 
 export default async function LoginPage() {
   const hubManaged = isFjordHubManaged()
+  const forgotPasswordEnabled = await getForgotPasswordEnabled()
 
   let userCount = 0
   try {
@@ -30,7 +32,7 @@ export default async function LoginPage() {
         </div>
 
         <div className="card">
-          <LoginForm hubManaged={hubManaged} />
+          <LoginForm hubManaged={hubManaged} forgotPasswordEnabled={forgotPasswordEnabled} />
         </div>
       </div>
     </main>

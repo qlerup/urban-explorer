@@ -10,6 +10,7 @@ import {
   verifyFjordHubPasswordReset,
 } from '@/lib/fjordhub'
 import { sendPasswordResetCode } from '@/lib/mail'
+import { getForgotPasswordEnabled } from '@/lib/settings'
 
 const GENERIC_MESSAGE =
   'Hvis email-adressen findes, er sikkerhedskoden sendt. Husk også at kontrollere Spam eller Uønsket mail.'
@@ -21,6 +22,9 @@ function sameHash(left: string, right: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  if (!(await getForgotPasswordEnabled())) {
+    return NextResponse.json({ error: 'Glemt adgangskode er slået fra på denne installation' }, { status: 403 })
+  }
   const body = await req.json().catch(() => ({}))
   const action = String(body.action || '')
 
