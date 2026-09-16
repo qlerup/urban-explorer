@@ -18,6 +18,12 @@ Find stederne i **Mine pins**, redigér deres status, og gem ændringerne.
 
 ![Urban Explorer: kategorifiltre i Mine pins og redigering af en pins status](docs/demo/pins-og-detaljer.gif)
 
+### Del med andre
+
+Del en kategori med en anden bruger, og vælg **Vis** for at give læseadgang. Følg derefter modtageren, som finder kategorien under **Delt med dig**, ser de delte pins og åbner deres detaljer.
+
+![Urban Explorer: deling af en kategori fra afsenderens side og visning af de delte pins hos modtageren](docs/demo/deling-og-modtager.gif)
+
 *Optaget i en separat demoinstallation med fiktive steder og demodata.*
 
 ## Funktioner
