@@ -20,9 +20,9 @@ Find stederne i **Mine pins**, redigér deres status, og gem ændringerne.
 
 ### Del med andre
 
-Del en kategori med en anden bruger, og vælg **Vis** for at give læseadgang. Følg derefter modtageren, som finder kategorien under **Delt med dig**, ser de delte pins og åbner deres detaljer.
+Åbn **Del med bruger** i kortets sidemenu, vælg en kategori, og giv modtageren adgang med **Kan se**. Følg derefter modtageren, som vælger det delte kort under **Delt med dig**, slår kategoriens pins til og fra og åbner en pins detaljer. Skift mellem dit eget og det delte kort direkte i sidemenuen.
 
-![Urban Explorer: deling af en kategori fra afsenderens side og visning af de delte pins hos modtageren](docs/demo/deling-og-modtager.gif)
+![Urban Explorer: deling fra kortets sidemenu og modtagerens visning, filtrering og åbning af delte pins på kortet](docs/demo/deling-og-modtager.gif)
 
 *Optaget i en separat demoinstallation med fiktive steder og demodata.*
 
