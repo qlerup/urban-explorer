@@ -2,10 +2,26 @@
 
 Find, markér og gem forladte steder på et satellitkort.
 
+## Se Urban Explorer i brug
+
+### Udforsk kortet
+
+Filtrér dine steder efter kategori, og åbn en pin for at se noter, rating og status.
+
+![Urban Explorer: filtrering af kategorier på satellitkortet og visning af en pin](docs/demo/kort-og-filtre.gif)
+
+### Hold styr på dine pins
+
+Find stederne i **Mine pins**, redigér deres status, og gem ændringerne.
+
+![Urban Explorer: kategorifiltre i Mine pins og redigering af en pins status](docs/demo/pins-og-detaljer.gif)
+
+*Optaget i en separat demoinstallation med fiktive steder og demodata.*
+
 ## Funktioner
 
-- Satellitkort (MapTiler Satellite via MapLibre GL JS) — tryk på kortet for at placere en pin
-- Pins gemmes persistent pr. bruger med koordinater, rating (1-5 stjerner) og billeder
+- Satellitkort med Esri eller MapTiler via Leaflet — tryk på kortet for at placere en pin
+- Pins gemmes persistent pr. bruger med koordinater, rating (1-3 stjerner) og billeder
 - "Åbn i Google Maps" i satellitvisning direkte fra en pin
 - "Mine pins"-liste med redigering, sletning og centrering på kortet
 - Mobilvenlig bundnavigation (Kort / Mine pins / Profil)
