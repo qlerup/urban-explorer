@@ -21,7 +21,8 @@ export default function TopNav({ isAdmin }: { isAdmin: boolean }) {
   return (
     <header className="hidden md:flex items-center gap-4 px-6 h-16 bg-void-900 border-b border-void-700">
       <Link href="/dashboard/kort" className="flex items-center gap-2 font-bold text-gray-100 shrink-0">
-        <span className="text-xl">🔦</span> Urban Explorer
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/hub-icon.png?v=brand-20261005" alt="" width={28} height={28} className="shrink-0 object-contain" /> Urban Explorer
       </Link>
 
       <nav className="ml-auto flex gap-1 shrink-0">

@@ -26,7 +26,8 @@ export default async function LoginPage() {
     <main className="min-h-screen flex flex-col items-center justify-center bg-void-950 px-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
-          <span className="text-4xl mb-2">🔦</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/hub-icon.png?v=brand-20261005" alt="" width={64} height={64} className="mb-2 object-contain" />
           <h1 className="text-2xl font-bold text-gray-100">Urban Explorer</h1>
           <p className="text-gray-500 text-sm mt-1">Log ind for at fortsætte</p>
         </div>

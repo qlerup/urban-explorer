@@ -1,0 +1,1121 @@
+{
+  "name": "Urban Explorer",
+  "exports": [
+    {
+      "path": "app/public/apple-touch-icon.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "app/public/favicon-16x16.png",
+      "size": [
+        16,
+        16
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/public/favicon-32x32.png",
+      "size": [
+        32,
+        32
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/public/favicon.ico",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/public/hub-icon.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/public/maskable-icon-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon",
+      "background": "#15343a",
+      "scale": 0.7
+    },
+    {
+      "path": "app/public/maskable-icon-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon",
+      "background": "#15343a",
+      "scale": 0.7
+    },
+    {
+      "path": "static/icons/android/mipmap-hdpi/ic_launcher.png",
+      "size": [
+        72,
+        72
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/android/mipmap-hdpi/ic_launcher_foreground.png",
+      "size": [
+        72,
+        72
+      ],
+      "kind": "icon",
+      "scale": 0.7
+    },
+    {
+      "path": "static/icons/android/mipmap-hdpi/ic_launcher_round.png",
+      "size": [
+        72,
+        72
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/android/mipmap-mdpi/ic_launcher.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/android/mipmap-mdpi/ic_launcher_foreground.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon",
+      "scale": 0.7
+    },
+    {
+      "path": "static/icons/android/mipmap-mdpi/ic_launcher_round.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/android/mipmap-xhdpi/ic_launcher.png",
+      "size": [
+        96,
+        96
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/android/mipmap-xhdpi/ic_launcher_foreground.png",
+      "size": [
+        96,
+        96
+      ],
+      "kind": "icon",
+      "scale": 0.7
+    },
+    {
+      "path": "static/icons/android/mipmap-xhdpi/ic_launcher_round.png",
+      "size": [
+        96,
+        96
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/android/mipmap-xxhdpi/ic_launcher.png",
+      "size": [
+        144,
+        144
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/android/mipmap-xxhdpi/ic_launcher_foreground.png",
+      "size": [
+        144,
+        144
+      ],
+      "kind": "icon",
+      "scale": 0.7
+    },
+    {
+      "path": "static/icons/android/mipmap-xxhdpi/ic_launcher_round.png",
+      "size": [
+        144,
+        144
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/android/mipmap-xxxhdpi/ic_launcher.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon",
+      "scale": 0.7
+    },
+    {
+      "path": "static/icons/android/mipmap-xxxhdpi/ic_launcher_round.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/apple-touch-icon.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/favicon.ico",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-1024x1024@1x.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-20x20@1x.png",
+      "size": [
+        20,
+        20
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-20x20@2x-ipad.png",
+      "size": [
+        40,
+        40
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-20x20@2x.png",
+      "size": [
+        40,
+        40
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-20x20@3x.png",
+      "size": [
+        60,
+        60
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-29x29@1x.png",
+      "size": [
+        29,
+        29
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-29x29@2x-ipad.png",
+      "size": [
+        58,
+        58
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-29x29@2x.png",
+      "size": [
+        58,
+        58
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-29x29@3x.png",
+      "size": [
+        87,
+        87
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-40x40@1x.png",
+      "size": [
+        40,
+        40
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-40x40@2x-ipad.png",
+      "size": [
+        80,
+        80
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-40x40@2x.png",
+      "size": [
+        80,
+        80
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-40x40@3x.png",
+      "size": [
+        120,
+        120
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-60x60@2x.png",
+      "size": [
+        120,
+        120
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-60x60@3x.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-76x76@1x.png",
+      "size": [
+        76,
+        76
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-76x76@2x.png",
+      "size": [
+        152,
+        152
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/ios/AppIcon.appiconset/Icon-App-83.5x83.5@2x.png",
+      "size": [
+        167,
+        167
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/pwa/icon-128x128.png",
+      "size": [
+        128,
+        128
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/icon-144x144.png",
+      "size": [
+        144,
+        144
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/icon-152x152.png",
+      "size": [
+        152,
+        152
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/icon-180x180.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/icon-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/icon-256x256.png",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/icon-384x384.png",
+      "size": [
+        384,
+        384
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/icon-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/icon-72x72.png",
+      "size": [
+        72,
+        72
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/icon-96x96.png",
+      "size": [
+        96,
+        96
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/pwa/maskable-icon-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon",
+      "background": "#15343a",
+      "scale": 0.7
+    },
+    {
+      "path": "static/icons/pwa/maskable-icon-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon",
+      "background": "#15343a",
+      "scale": 0.7
+    },
+    {
+      "path": "static/icons/solid_png/icon-1024x1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-114x114.png",
+      "size": [
+        114,
+        114
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-120x120.png",
+      "size": [
+        120,
+        120
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-128x128.png",
+      "size": [
+        128,
+        128
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-144x144.png",
+      "size": [
+        144,
+        144
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-150x150.png",
+      "size": [
+        150,
+        150
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-152x152.png",
+      "size": [
+        152,
+        152
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-167x167.png",
+      "size": [
+        167,
+        167
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-16x16.png",
+      "size": [
+        16,
+        16
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-180x180.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-20x20.png",
+      "size": [
+        20,
+        20
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-24x24.png",
+      "size": [
+        24,
+        24
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-256x256.png",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-29x29.png",
+      "size": [
+        29,
+        29
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-32x32.png",
+      "size": [
+        32,
+        32
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-36x36.png",
+      "size": [
+        36,
+        36
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-384x384.png",
+      "size": [
+        384,
+        384
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-40x40.png",
+      "size": [
+        40,
+        40
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-48x48.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-57x57.png",
+      "size": [
+        57,
+        57
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-58x58.png",
+      "size": [
+        58,
+        58
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-60x60.png",
+      "size": [
+        60,
+        60
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-64x64.png",
+      "size": [
+        64,
+        64
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-72x72.png",
+      "size": [
+        72,
+        72
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-76x76.png",
+      "size": [
+        76,
+        76
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-80x80.png",
+      "size": [
+        80,
+        80
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-87x87.png",
+      "size": [
+        87,
+        87
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/solid_png/icon-96x96.png",
+      "size": [
+        96,
+        96
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-1024x1024.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-114x114.png",
+      "size": [
+        114,
+        114
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-120x120.png",
+      "size": [
+        120,
+        120
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-128x128.png",
+      "size": [
+        128,
+        128
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-144x144.png",
+      "size": [
+        144,
+        144
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-150x150.png",
+      "size": [
+        150,
+        150
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-152x152.png",
+      "size": [
+        152,
+        152
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-167x167.png",
+      "size": [
+        167,
+        167
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-16x16.png",
+      "size": [
+        16,
+        16
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-180x180.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-20x20.png",
+      "size": [
+        20,
+        20
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-24x24.png",
+      "size": [
+        24,
+        24
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-256x256.png",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-29x29.png",
+      "size": [
+        29,
+        29
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-32x32.png",
+      "size": [
+        32,
+        32
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-36x36.png",
+      "size": [
+        36,
+        36
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-384x384.png",
+      "size": [
+        384,
+        384
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-40x40.png",
+      "size": [
+        40,
+        40
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-48x48.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-57x57.png",
+      "size": [
+        57,
+        57
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-58x58.png",
+      "size": [
+        58,
+        58
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-60x60.png",
+      "size": [
+        60,
+        60
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-64x64.png",
+      "size": [
+        64,
+        64
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-72x72.png",
+      "size": [
+        72,
+        72
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-76x76.png",
+      "size": [
+        76,
+        76
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-80x80.png",
+      "size": [
+        80,
+        80
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-87x87.png",
+      "size": [
+        87,
+        87
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/transparent_png/icon-96x96.png",
+      "size": [
+        96,
+        96
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/urban-explorer.icns",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/web/android-chrome-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/web/android-chrome-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/web/apple-touch-icon.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/web/favicon-16x16.png",
+      "size": [
+        16,
+        16
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/web/favicon-32x32.png",
+      "size": [
+        32,
+        32
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/web/favicon.ico",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/web/favicon/favicon-16x16.png",
+      "size": [
+        16,
+        16
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/web/favicon/favicon-32x32.png",
+      "size": [
+        32,
+        32
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/web/favicon/favicon-48x48.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/web/mstile-150x150.png",
+      "size": [
+        150,
+        150
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/icons/windows/Square150x150Logo.png",
+      "size": [
+        150,
+        150
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/windows/Square310x310Logo.png",
+      "size": [
+        310,
+        310
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/windows/Square70x70Logo.png",
+      "size": [
+        70,
+        70
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "static/icons/windows/Wide310x150Logo.png",
+      "size": [
+        310,
+        150
+      ],
+      "kind": "icon",
+      "background": "#15343a"
+    },
+    {
+      "path": "app/public/android-chrome-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "app/public/android-chrome-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    }
+  ]
+}

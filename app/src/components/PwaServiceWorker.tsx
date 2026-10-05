@@ -6,15 +6,15 @@ function shellAssetUrls(): string[] {
   const urls = new Set<string>([
     '/dashboard/kort',
     '/dashboard/ruteplanlaegger',
-    '/site.webmanifest',
-    '/favicon.ico',
-    '/favicon-32x32.png',
-    '/favicon-16x16.png',
-    '/apple-touch-icon.png',
-    '/android-chrome-192x192.png',
-    '/android-chrome-512x512.png',
-    '/maskable-icon-192x192.png',
-    '/maskable-icon-512x512.png',
+    '/site.webmanifest?v=brand-20261005',
+    '/favicon.ico?v=brand-20261005',
+    '/favicon-32x32.png?v=brand-20261005',
+    '/favicon-16x16.png?v=brand-20261005',
+    '/apple-touch-icon.png?v=brand-20261005',
+    '/android-chrome-192x192.png?v=brand-20261005',
+    '/android-chrome-512x512.png?v=brand-20261005',
+    '/maskable-icon-192x192.png?v=brand-20261005',
+    '/maskable-icon-512x512.png?v=brand-20261005',
   ])
 
   document.querySelectorAll<HTMLScriptElement>('script[src]').forEach(element => {

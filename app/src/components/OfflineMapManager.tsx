@@ -140,11 +140,11 @@ function currentShellUrls(): string[] {
   const urls = new Set<string>([
     '/dashboard/kort',
     '/dashboard/ruteplanlaegger',
-    '/site.webmanifest',
-    '/favicon.ico',
-    '/android-chrome-192x192.png',
-    '/android-chrome-512x512.png',
-    '/apple-touch-icon.png',
+    '/site.webmanifest?v=brand-20261005',
+    '/favicon.ico?v=brand-20261005',
+    '/android-chrome-192x192.png?v=brand-20261005',
+    '/android-chrome-512x512.png?v=brand-20261005',
+    '/apple-touch-icon.png?v=brand-20261005',
   ])
   document.querySelectorAll<HTMLScriptElement>('script[src]').forEach(element => {
     if (element.src.startsWith(window.location.origin)) urls.add(new URL(element.src).pathname)

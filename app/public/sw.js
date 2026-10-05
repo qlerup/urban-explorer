@@ -1,4 +1,4 @@
-const APP_CACHE = 'urban-explorer-app-shell-v5'
+const APP_CACHE = 'urban-explorer-app-shell-v6'
 const APP_CACHE_PREFIX = 'urban-explorer-app-shell-'
 const OFFLINE_MAP_CACHE_PREFIX = 'urban-explorer-offline-map-'
 
