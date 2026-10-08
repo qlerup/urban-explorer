@@ -1,7 +1,8 @@
+import {hubAccess, hubManaged} from '@/lib/hub-access'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken, COOKIE_NAME } from '@/lib/auth-edge'
 
-const PUBLIC_PATHS = ['/', '/login', '/glemt-adgangskode', '/setup', '/api/setup', '/api/auth/login', '/api/auth/change-password', '/api/auth/password-reset', '/api/cadastre', '/share', '/api/share', '/hub-login', '/api/health']
+const PUBLIC_PATHS = ['/hub-session.js', '/hub-session.css', '/api/auth/access', '/', '/login', '/glemt-adgangskode', '/setup', '/api/setup', '/api/auth/login', '/api/auth/change-password', '/api/auth/password-reset', '/api/cadastre', '/share', '/api/share', '/hub-login', '/api/health']
 const CHANGE_PASSWORD_PATHS = ['/skift-adgangskode', '/api/auth/change-password', '/api/auth/logout']
 
 export async function middleware(req: NextRequest) {
@@ -31,6 +32,18 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/skift-adgangskode', req.url))
   }
 
+  if (hubManaged() && session.hubUserId) {
+    const status = await hubAccess({id:session.hubUserId})
+    if (status === 'unavailable') return NextResponse.json({error_code:'hub_unavailable'}, {status:503})
+    if (status === 'revoked') {
+      const response = pathname.startsWith('/api/')
+        ? NextResponse.json({error_code:'access_revoked', authenticated:false}, {status:401})
+        : NextResponse.redirect(new URL('/login?access_removed=1', req.url))
+      response.cookies.delete(COOKIE_NAME)
+      response.headers.set('Cache-Control','no-store')
+      return response
+    }
+  }
   return NextResponse.next()
 }
 

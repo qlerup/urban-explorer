@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
   try {
     const user = await ensureManagedLocalUser(hubUser)
     const sessionToken = await createToken({
+      hubUserId: hubUser.id,
       userId: user.id,
       isAdmin: user.isAdmin,
       mustChangePassword: false,

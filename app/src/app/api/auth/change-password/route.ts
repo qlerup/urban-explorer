@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     // Koden er skiftet - log brugeren ind med det samme
     const user = await ensureManagedLocalUser(hubUser)
-    const token = await createToken({ userId: user.id, isAdmin: user.isAdmin, mustChangePassword: false })
+    const token = await createToken({ hubUserId: hubUser.id, userId: user.id, isAdmin: user.isAdmin, mustChangePassword: false })
     const response = NextResponse.json({ success: true })
     response.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,

@@ -1,3 +1,5 @@
+import pool from './db'
+import { hubAccess, hubManaged } from './hub-access'
 import argon2 from 'argon2'
 import { SignJWT } from 'jose'
 import { cookies } from 'next/headers'
@@ -54,5 +56,14 @@ export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE_NAME)?.value
   if (!token) return null
-  return verifyToken(token)
+  const value = await verifyToken(token)
+  if (!value || !hubManaged()) return value
+  let identity: {id?: number; username?: string} = {id:value.hubUserId}
+  if (!identity.id) {
+    const row = (await pool.query('SELECT fjordhub_user_id FROM users WHERE id=$1', [value.userId])).rows[0]
+    identity = {id: row?.fjordhub_user_id ? Number(row.fjordhub_user_id) : undefined}
+  }
+  const status = await hubAccess(identity)
+  if (status === 'unavailable') throw new Error('FjordHub unavailable')
+  return status === 'allowed' ? value : null
 }

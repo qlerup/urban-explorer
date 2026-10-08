@@ -1,3 +1,4 @@
+import Script from 'next/script'
 import type { Metadata, Viewport } from 'next'
 import 'ol/ol.css'
 import './globals.css'
@@ -39,6 +40,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="da">
       <body className="antialiased">
         <PwaServiceWorker />
+        <link rel="stylesheet" href="/hub-session.css?v=1" />
+        <Script src="/hub-session.js?v=1" strategy="afterInteractive" />
         {children}
       </body>
     </html>

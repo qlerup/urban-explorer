@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
       }
       const user = await ensureManagedLocalUser(hubUser)
       const token = await createToken({
+        hubUserId: hubUser.id,
         userId: user.id,
         isAdmin: user.isAdmin,
         mustChangePassword: false,
