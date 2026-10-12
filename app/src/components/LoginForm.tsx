@@ -10,6 +10,9 @@ export default function LoginForm({ hubManaged = false, forgotPasswordEnabled = 
   const [password, setPassword] = useState('')
   const [emailRequired, setEmailRequired] = useState(false)
   const [firstLoginEmail, setFirstLoginEmail] = useState('')
+  const [firstPasswordRequired, setFirstPasswordRequired] = useState(false)
+  const [firstLoginPassword, setFirstLoginPassword] = useState('')
+  const [firstLoginPasswordConfirm, setFirstLoginPasswordConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [mustChangePassword, setMustChangePassword] = useState(false)
@@ -24,11 +27,12 @@ export default function LoginForm({ hubManaged = false, forgotPasswordEnabled = 
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, firstLoginEmail }),
+        body: JSON.stringify({ email, password, firstLoginEmail, firstLoginPassword, firstLoginPasswordConfirm }),
       })
       const data = await res.json()
-      if (data.emailRequired) {
-        setEmailRequired(true)
+      if (data.onboardingRequired) {
+        setEmailRequired(data.emailRequired)
+        setFirstPasswordRequired(data.firstPasswordRequired)
         setError(data.error)
         return
       }
@@ -132,6 +136,7 @@ export default function LoginForm({ hubManaged = false, forgotPasswordEnabled = 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {firstPasswordRequired && <><label className="block">Ny personlig adgangskode<input type="password" required minLength={6} maxLength={128} autoComplete="new-password" className="input-field" value={firstLoginPassword} onChange={e => setFirstLoginPassword(e.target.value)} /></label><label className="block">Gentag ny adgangskode<input type="password" required minLength={6} maxLength={128} autoComplete="new-password" className="input-field" value={firstLoginPasswordConfirm} onChange={e => setFirstLoginPasswordConfirm(e.target.value)} /></label></>}
       {emailRequired && <label className="block">Email til din FjordHub-konto
         <input type="email" required autoFocus autoComplete="email" className="input-field" value={firstLoginEmail} onChange={e => setFirstLoginEmail(e.target.value)} />
       </label>}

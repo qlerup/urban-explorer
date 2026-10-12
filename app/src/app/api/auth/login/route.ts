@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
           { status: 429 }
         )
       }
-      const hubUser = await authenticateWithFjordHub(String(email).trim(), password, typeof body.firstLoginEmail === "string" ? body.firstLoginEmail : "")
+      const hubUser = await authenticateWithFjordHub(String(email).trim(), password, typeof body.firstLoginEmail === "string" ? body.firstLoginEmail : "", typeof body.firstLoginPassword === "string" ? body.firstLoginPassword : "", typeof body.firstLoginPasswordConfirm === "string" ? body.firstLoginPasswordConfirm : "")
       if (!hubUser) {
         recordManagedLoginFailure(managedKey)
         return NextResponse.json(
@@ -68,8 +68,8 @@ export async function POST(req: NextRequest) {
         )
       }
       clearManagedLoginFailures(managedKey)
-      if (hubUser.email_required) {
-        return NextResponse.json({ emailRequired: true, error: hubUser.email_error || 'Indtast din email ved første login.' }, { status: 403 })
+      if (hubUser.email_required || hubUser.must_change_password) {
+        return NextResponse.json({ onboardingRequired: true, emailRequired: !!hubUser.email_required, firstPasswordRequired: !!hubUser.must_change_password, error: hubUser.email_error || 'Første login: Udfyld oplysningerne og vælg din egen adgangskode.' }, { status: 403 })
       }
       if (hubUser.must_change_password) {
         // Første login efter oprettelse: brugeren skal selv vælge en ny adgangskode
