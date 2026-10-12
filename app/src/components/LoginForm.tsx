@@ -8,6 +8,8 @@ export default function LoginForm({ hubManaged = false, forgotPasswordEnabled = 
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [emailRequired, setEmailRequired] = useState(false)
+  const [firstLoginEmail, setFirstLoginEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [mustChangePassword, setMustChangePassword] = useState(false)
@@ -22,9 +24,14 @@ export default function LoginForm({ hubManaged = false, forgotPasswordEnabled = 
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, firstLoginEmail }),
       })
       const data = await res.json()
+      if (data.emailRequired) {
+        setEmailRequired(true)
+        setError(data.error)
+        return
+      }
       if (data.passwordChangeRequired) {
         setMustChangePassword(true)
         return
@@ -125,6 +132,9 @@ export default function LoginForm({ hubManaged = false, forgotPasswordEnabled = 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {emailRequired && <label className="block">Email til din FjordHub-konto
+        <input type="email" required autoFocus autoComplete="email" className="input-field" value={firstLoginEmail} onChange={e => setFirstLoginEmail(e.target.value)} />
+      </label>}
       <div>
         <label className="block text-sm font-medium text-gray-300 mb-1.5">
           {hubManaged ? 'FjordHub-brugernavn' : 'Email'}

@@ -10,6 +10,8 @@ export interface FjordHubUser {
   first_name?: string
   last_name?: string
   language?: string
+  email_required?: boolean
+  email_error?: string
   must_change_password?: boolean
 }
 
@@ -134,9 +136,10 @@ export async function migrateLegacyUsersToFjordHub(): Promise<void> {
 
 export async function authenticateWithFjordHub(
   username: string,
-  password: string
+  password: string,
+  first_login_email: string = ""
 ): Promise<FjordHubUser | null> {
-  const result = await hubRequest('/api/hub/apps/authenticate', { username, password })
+  const result = await hubRequest('/api/hub/apps/authenticate', { username, password, first_login_email })
   const user = result.user
   return result.ok === true && user && typeof user === 'object' ? user as FjordHubUser : null
 }
