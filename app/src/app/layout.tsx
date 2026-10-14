@@ -40,8 +40,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="da">
       <body className="antialiased">
         <PwaServiceWorker />
-        <link rel="stylesheet" href="/hub-session.css?v=1" />
-        <Script src="/hub-session.js?v=2" strategy="afterInteractive" />
+        <link rel="stylesheet" href="/hub-session.css?v=email-update1" />
+        <Script src="/hub-session.js?v=email-update1" strategy="afterInteractive" />
         {children}
       </body>
     </html>

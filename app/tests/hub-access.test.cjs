@@ -20,7 +20,7 @@ function fixture() {
   }};
   const source = fs.readFileSync(path.join(__dirname, '../src/lib/hub-access.ts'), 'utf8');
   vm.runInNewContext(ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS}}).outputText, context);
-  return {access: exports.hubAccess, expire: () => {now += 5001;}, revoke: () => {people = [];},
+  return {access: exports.hubAccess, member:exports.hubMember, requireEmail:value => {people = [{id:77,username:'Alice',email_required:value}];}, expire: () => {now += 5001;}, revoke: () => {people = [];},
     grant: () => {people = [{id: 77, username: 'Renamed'}];}, fail: () => {unavailable = true;}, calls: () => calls};
 }
 
@@ -47,4 +47,16 @@ test('concurrent membership checks share one Hub request', async () => {
   const f = fixture();
   assert.deepEqual(await Promise.all([f.access({id:77}), f.access({id:77})]), ['allowed', 'allowed']);
   assert.equal(f.calls(), 1);
+});
+
+test('a fresh opening observes email requirement and confirmation across apps', async () => {
+  const f = fixture();
+  assert.equal(await f.access({id:77}), 'allowed');
+  f.requireEmail(true);
+  assert.equal((await f.member({id:77}, true)).email_required, true);
+  assert.equal(await f.access({id:77}), 'email_required');
+  f.requireEmail(false);
+  assert.equal((await f.member({id:77}, true)).email_required, false);
+  assert.equal(await f.access({id:77}), 'allowed');
+  assert.equal(await f.member({id:88}, true), null);
 });

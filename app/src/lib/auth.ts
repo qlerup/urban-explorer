@@ -52,18 +52,23 @@ export async function createToken(payload: SessionPayload): Promise<string> {
     .sign(getJwtSecret())
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
+export async function getSession(options: {allowEmailRequired?:boolean} = {}): Promise<SessionPayload | null> {
   const cookieStore = await cookies()
   const token = cookieStore.get(COOKIE_NAME)?.value
   if (!token) return null
   const value = await verifyToken(token)
   if (!value || !hubManaged()) return value
+  const identity = await getHubIdentity(value)
+  const status = await hubAccess(identity)
+  if (status === 'unavailable') throw new Error('FjordHub unavailable')
+  return status === 'allowed' || (status === 'email_required' && options.allowEmailRequired) ? value : null
+}
+
+export async function getHubIdentity(value: SessionPayload) {
   let identity: {id?: number; username?: string} = {id:value.hubUserId}
   if (!identity.id) {
     const row = (await pool.query('SELECT fjordhub_user_id FROM users WHERE id=$1', [value.userId])).rows[0]
     identity = {id: row?.fjordhub_user_id ? Number(row.fjordhub_user_id) : undefined}
   }
-  const status = await hubAccess(identity)
-  if (status === 'unavailable') throw new Error('FjordHub unavailable')
-  return status === 'allowed' ? value : null
+  return identity
 }

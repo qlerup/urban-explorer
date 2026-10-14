@@ -41,7 +41,7 @@ function managedEmail(username: string, email?: string): string {
   return String(email || '').trim().toLowerCase() || `${username.trim().toLowerCase()}@fjordhub.local`
 }
 
-async function hubRequest(
+export async function hubRequest(
   path: string,
   payload: Record<string, unknown>,
   method: 'GET' | 'POST' = 'POST'
