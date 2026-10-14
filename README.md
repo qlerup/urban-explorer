@@ -1,123 +1,100 @@
 # Urban Explorer
 
-Find, markér og organisér steder på et satellitkort. Gem noter, billeder og videoer, planlæg ture, og del udvalgte pins eller kategorier med andre.
+Find, mark and organize places on a satellite map. Save notes, photos and videos, plan trips, and share selected pins or categories. Runs standalone with Docker Compose or through FjordHub on desktop and mobile. The interface currently uses Danish labels.
 
-Urban Explorer kan køre selvstændigt med Docker Compose eller installeres gennem FjordHub. Appen er lavet til både computer og mobil.
+## See it in action
 
-## Se Urban Explorer i brug
+### Explore the map
 
-### Udforsk kortet
+Filter places by category and open a pin to see notes, rating and status.
 
-Filtrér dine steder efter kategori, og åbn en pin for at se noter, rating og status.
+![Satellite map category filtering and pin details](docs/demo/kort-og-filtre.gif)
 
-![Urban Explorer: filtrering af kategorier på satellitkortet og visning af en pin](docs/demo/kort-og-filtre.gif)
+### Manage your pins
 
-### Hold styr på dine pins
+Find places in My pins, edit their status and save changes.
 
-Find stederne i **Mine pins**, redigér deres status, og gem ændringerne.
+![My pins filters and status editing](docs/demo/pins-og-detaljer.gif)
 
-![Urban Explorer: kategorifiltre i Mine pins og redigering af en pins status](docs/demo/pins-og-detaljer.gif)
+### Share with others
 
-### Del med andre
+Open Share with user in the map sidebar, choose a category and grant view access. The recipient selects Shared with you, filters shared categories and opens pin details. Switch between your own and shared maps directly in the sidebar.
 
-Åbn **Del med bruger** i kortets sidemenu, vælg en kategori, og giv modtageren adgang med **Kan se**. Følg derefter modtageren, som vælger det delte kort under **Delt med dig**, slår kategoriens pins til og fra og åbner en pins detaljer. Skift mellem dit eget og det delte kort direkte i sidemenuen.
+![Sender sharing and recipient map/filter/detail workflow](docs/demo/deling-og-modtager.gif)
 
-![Urban Explorer: deling fra kortets sidemenu og modtagerens visning, filtrering og åbning af delte pins på kortet](docs/demo/deling-og-modtager.gif)
+Recorded in a separate demo with fictional places and data.
 
-*Optaget i en separat demoinstallation med fiktive steder og demodata.*
+## Features
 
-## Funktioner
+### Maps and exploration
 
-### Kort og udforskning
+- Satellite, street and outdoor maps using Esri or MapTiler.
+- Danish aerial/oblique imagery from Dataforsyningen when configured, plus cadastral parcel details.
+- Address/coordinate search and current location.
+- Pin clustering and category, icon, status and rating filters.
+- A 1 × 1 km search grid to track reviewed areas.
+- Distance measurement and drawn/saved routes associated with pins.
 
-- Satellitkort, vejnavne og outdoor-kort med Esri eller MapTiler.
-- Danske luftfotos og skråfotos via Dataforsyningen, når en token er konfigureret.
-- Matrikelkort med oplysninger om den valgte matrikel.
-- Søgning efter adresser eller koordinater og visning af din aktuelle position.
-- Pins samlet i klynger ved større afstande og filtre efter kategori, ikon, status og rating.
-- Søgegitter på 1 × 1 km, så du kan holde styr på gennemgåede områder.
-- Afstandsmåling og mulighed for at tegne og gemme ruter til en pin.
+### Pins, categories and media
 
-### Pins, kategorier og medier
+- Names, descriptions, coordinates and ratings up to three stars.
+- Want to visit, Visited, Keep an eye on and Dead spot statuses.
+- Pin icons and multiple categories with custom colors.
+- My pins filtering/editing and return-to-map navigation.
+- Photos/videos with an expanded viewer; open coordinates in Google Maps or the oblique-imagery service.
 
-- Gem navn, beskrivelse, koordinater og en rating på op til tre stjerner.
-- Markér steder som **Vil se**, **Har set**, **Hold øje** eller **Dødt spot**.
-- Vælg mellem appens pinikoner, og organisér en pin i flere kategorier med egne farver.
-- Brug **Mine pins** til at filtrere, redigere og finde tilbage til steder på kortet.
-- Tilføj billeder og videoer, og åbn dem i en større visning.
-- Åbn en pins placering i Google Maps eller Skråfoto.
+### Trip planning
 
-### Ruteplanlægning
+Choose pins, start/end points and calculate driving routes using Valhalla, including optional waypoint optimization. Inspect distance, estimated time and legs, save/reopen routes and launch Google Maps navigation to stops.
 
-- Vælg pins til en køretur, og vælg start- og slutpunkt.
-- Beregn ruten med Valhalla, som kan optimere rækkefølgen af mellemstop.
-- Se afstand, forventet køretid og de enkelte strækninger.
-- Gem ruter og åbn dem igen under **Gemte ruter**.
-- Start navigation til stoppene via Google Maps.
+The bundled Valhalla container builds **Denmark** road data on first start. Routing waits for that initial download/build. Each calculation accepts at most 50 points. Maps and pins remain usable while routing data is prepared.
 
-Den medfølgende Valhalla-container bygger vejdata for **Danmark**. API'et accepterer højst 50 rutepunkter pr. beregning. Første opstart kræver download og opbygning af vejdata, før ruteplanlægningen er klar.
+### Sharing
 
-### Deling og samarbejde
+Share categories, individual or uncategorized pins with view/edit permissions. Create public links to selected pins and manage/revoke them under Shared links. Recipients can copy shared pins into their own collection. Map sharing and shared-pin category filters are available from the sidebar.
 
-- Del kategorier, enkelte pins eller dine ukategoriserede pins med andre brugere.
-- Vælg, om modtageren kun må se indholdet eller også må redigere det.
-- Opret delingslinks til udvalgte pins, så de kan ses uden en brugerkonto.
-- Administrér og fjern delingslinks under **Delte links**.
-- Gem en kopi af en pin, som en anden bruger har delt med dig.
+### Import/export
 
-### Import og eksport
+Import point placemarks from multiple KML/KMZ files, review candidates before saving, and export KMZ with descriptions, pin icons and associated media. Imports accept up to 25 MB and 2,000 points; this is not a complete database restore.
 
-- Importér punktmarkeringer fra **KML** og **KMZ**, også fra flere filer ad gangen.
-- Gennemgå importerede kandidater, før du gemmer dem som pins.
-- Eksportér dine pins som KMZ med beskrivelser, pinikoner og tilknyttede mediefiler.
+### Offline maps and mobile
 
-Importen accepterer filer på op til 25 MB og højst 2.000 punkter ad gangen. Den importerer punktmarkeringer; det er ikke en fuld gendannelse af en databasebackup.
+Download a chosen GeoDanmark aerial-map area with pins and relevant saved routes. Select one of four detail levels and follow size/progress. Reopen downloaded areas in the same browser without a connection. Mobile navigation and home-screen PWA installation are available where supported.
 
-### Offlinekort og mobil
+Offline downloads require a Dataforsyningen token and internet while downloading. Packages remain in that device's browser storage, not server PostgreSQL. Preserve browser data and download on the intended device. Offline viewing does not calculate new driving routes without a server connection.
 
-- Download et valgt kortområde med GeoDanmark-luftfotos, pins og relevante gemte ruter.
-- Vælg mellem fire detaljeniveauer, og følg downloadens størrelse og fremdrift.
-- Åbn hentede områder fra den samme browser, også når forbindelsen forsvinder.
-- Brug mobilnavigationen eller installér appen som en PWA, hvor browseren understøtter det.
+## Install through FjordHub
 
-Download af offlinekort kræver en **Dataforsyningen-token** og internetforbindelse. Pakkerne gemmes lokalt i browserens lager, ikke i serverens database. Hent dem på den enhed, du skal bruge, og behold browserdataene. Offlinekort er til visning af hentet indhold; beregning af nye køreruter kræver forbindelse til serveren.
+The [manifest](fjordhub.json) defines port, map keys, upload directory and generated secrets. Hub supplies shared users, SSO, access grants and password recovery. Map provider/keys remain configurable in the app.
 
-## Installation med FjordHub
+First-login email confirmation and replacement of a temporary password can be completed in the app. Five-attempt login limits and temporary lockout apply. Existing sessions are checked against current Hub access; revocation blocks requests and invalidates login, while Hub outages do not authorize stale membership.
 
-Installér **Urban Explorer** fra FjordHubs appkatalog. Manifestet [fjordhub.json](fjordhub.json) beskriver webport, kortnøgler, upload-mappe og de secrets, som FjordHub genererer.
+Hub administrators can require an email update on next opening. Returning to the app also checks existing logins and shows a mandatory form. Saving a valid, unique address clears the shared requirement across updated apps. Update Hub and Urban Explorer together.
 
-Integrationen understøtter login fra FjordHub, synkronisering af brugere og adgangskodenulstilling gennem hubben. Kortudbyder og kortnøgler kan stadig administreres i Urban Explorers **Indstillinger**.
+## Standalone Docker deployment
 
-## Selvstændig installation med Docker Compose
-
-Du skal have Git, Docker og Docker Compose tilgængeligt. På Windows kan Docker Desktop bruges.
-
-### 1. Hent projektet
+Requires Git, Docker and Compose; Docker Desktop can be used on Windows.
 
 ```sh
 git clone https://github.com/qlerup/urban-explorer.git
 cd urban-explorer
 ```
 
-### 2. Opret secrets til en ny installation
-
-Windows / PowerShell:
+Generate secrets **only for a new installation**:
 
 ```powershell
 .\scripts\generate-secrets.ps1
 ```
 
-Linux / macOS med Bash og OpenSSL:
+Or on Linux/macOS:
 
 ```sh
 bash scripts/generate-secrets.sh
 ```
 
-Scriptet skriver en `.env` med `DB_PASSWORD`, `JWT_SECRET` og `ENCRYPTION_KEY`. **Kør det kun ved førstegangsopsætning:** det overskriver filen og udskifter nøglerne. En eksisterende installations krypteringsnøgle skal bevares, så gemte oplysninger fortsat kan læses.
+The generator writes `.env` with `DB_PASSWORD`, `JWT_SECRET` and `ENCRYPTION_KEY`, overwriting the file. Do not run it during an update: preserve the original key so saved encrypted data remains readable.
 
-### 3. Vælg port og lagerplads
-
-Behold de genererede secrets, og tilpas eventuelt disse værdier i `.env`:
+Adjust deployment settings while retaining generated secrets:
 
 ```dotenv
 APP_PORT=3001
@@ -127,105 +104,59 @@ MAPTILER_KEY=
 DATAFORSYNINGEN_TOKEN=
 ```
 
-**Esri er standard**, så du kan starte uden en MapTiler-nøgle. Vælg senere MapTiler og indsæt din nøgle under **Indstillinger**, hvis du ønsker den udbyder. Dataforsyningen-token er valgfri og bruges til de danske korttjenester og offlinekort.
-
-`UPLOADS_HOST_DIR` kan pege på lokal disk eller et allerede monteret NAS/NFS-share. Mappen skal være skrivbar for containerens bruger, UID/GID `1001`. Hvis variablen udelades, bruger Compose et Docker-volume til medierne.
-
-### 4. Byg og start
+Esri is the default and requires no MapTiler key. Dataforsyningen is optional for Danish map services/offline areas. `UPLOADS_HOST_DIR` may be local disk or an already mounted NAS/NFS share, writable by UID/GID 1001; without it, Compose uses the media volume.
 
 ```sh
 docker compose up -d --build
-```
-
-Åbn [http://localhost:3001](http://localhost:3001). Har du valgt en anden `APP_PORT`, skal du bruge den i adressen.
-
-Første besøg åbner opsætningsguiden, hvor du opretter administratoren. Opsætningssiden lukkes efter den første konto. Administratoren kan derefter oprette flere brugere under **Indstillinger**.
-
-Ved adgang fra andre enheder skal appen sættes bag en **HTTPS-reverse proxy**: produktionslogin bruger Secure-cookies, og PWA/offlinefunktioner kræver en sikker browserkontekst. `localhost` kan bruges til lokal afprøvning.
-
-Følg eventuelt opstarten med:
-
-```sh
 docker compose ps
 docker compose logs -f app valhalla
 ```
 
-Valhalla bygger sit danske vejnet ved første opstart. Kort og pins kan bruges, mens rutedata bliver klargjort.
+Open `http://localhost:3001` (or the chosen port), create the first administrator, then manage users under Settings. First-user setup closes after creation. Other devices require an HTTPS reverse proxy: production login uses Secure cookies and PWA/offline features need a secure browser context. Localhost is suitable for local testing.
 
-## Indstillinger og brugere
+## Settings and configuration
 
-Administratorer kan vælge kortudbyder, gemme MapTiler- og Dataforsyningen-nøgler, konfigurere SMTP og administrere brugere.
+Administrators manage map providers/keys, SMTP and users. Forgot password can be enabled/disabled. Standalone reset codes use configured mail delivery; managed recovery uses Hub. Standalone mail settings support the available SMTP/Resend configuration and require a confirmed test send before saving.
 
-**Glemt adgangskode** kan aktiveres eller deaktiveres i appen. Selvstændige installationer sender nulstillingskoder med den konfigurerede SMTP-server. FjordHub-installationer bruger hubbens centrale opsætning til nulstilling af hub-kontoen.
+See [.env.example](.env.example) and [docker-compose.yml](docker-compose.yml).
 
-## Konfiguration
-
-Se også [.env.example](.env.example) og [docker-compose.yml](docker-compose.yml).
-
-| Variabel | Formål / standard |
+| Variable | Purpose |
 | --- | --- |
-| `DB_PASSWORD` | Databaseadgangskode. Genereres ved installation. |
-| `JWT_SECRET` | Nøgle til login-sessioner. Genereres ved installation. |
-| `ENCRYPTION_KEY` | Nøgle til krypterede oplysninger. Skal bevares ved opdatering og gendannelse. |
-| `APP_PORT` | Port på Docker-hosten. Standard: `3001`. |
-| `TZ` | Tidszone. Standard: `Europe/Copenhagen`. |
-| `UPLOADS_HOST_DIR` | Mappe til billeder og videoer. Uden værdi bruges `uploads_data`. |
-| `MAPTILER_KEY` | Valgfri nøgle til MapTiler; kan også gemmes i appens indstillinger. |
-| `DATAFORSYNINGEN_TOKEN` | Valgfri token til danske korttjenester; kan også gemmes i indstillingerne. |
-| `FJORDHUB_URL` | FjordHubs adresse ved hub-integration. |
-| `FJORDHUB_APP_ID` | App-id ved hub-integration. Standard: `urban-explorer`. |
-| `FJORDHUB_API_KEY` | Intern integrationsnøgle, som bruges sammen med FjordHub. |
+| `DB_PASSWORD` | Installation-specific database password. |
+| `JWT_SECRET` | Session-signing secret. |
+| `ENCRYPTION_KEY` | Original encryption key; preserve for updates/recovery. |
+| `APP_PORT` | Host web port, default 3001. |
+| `TZ` | Timezone, default Europe/Copenhagen. |
+| `UPLOADS_HOST_DIR` | Host media directory; otherwise `uploads_data`. |
+| `MAPTILER_KEY` | Optional provider key, also configurable in Settings. |
+| `DATAFORSYNINGEN_TOKEN` | Optional Danish-map token, also configurable in Settings. |
+| `FJORDHUB_URL`, `FJORDHUB_API_KEY` | Managed integration supplied by Hub. |
+| `FJORDHUB_APP_ID` | Managed app ID, `urban-explorer`. |
 
-Compose sætter desuden `DATABASE_URL` til den interne PostgreSQL-service og `VALHALLA_URL` til `http://valhalla:8002`. Ved en anden driftsopsætning skal disse adresser tilpasses i containerens miljø.
+Compose sets internal `DATABASE_URL` and `VALHALLA_URL=http://valhalla:8002`; adjust for other deployments. Settings saved through the UI live in PostgreSQL, not only `.env`.
 
-Kortnøgler og mailopsætning, der gemmes via appen, ligger i databasen; konfiguration findes derfor ikke kun i `.env`.
+## Data, updates and backup
 
-## Data, opdatering og backup
-
-| Lager | Indhold |
+| Storage | Contents |
 | --- | --- |
-| `postgres_data` | Brugere, pins, kategorier, delinger, ruter og indstillinger. |
-| `UPLOADS_HOST_DIR` eller `uploads_data` | Uploadede billeder og videoer. |
-| `valhalla_data` | Downloadede og byggede rutedata, som genbruges ved genstart. |
-| Browserens lokale lager | Downloadede offlineområder på den enkelte enhed. |
+| `postgres_data` | Users, pins, categories, shares, routes and settings. |
+| `UPLOADS_HOST_DIR` / `uploads_data` | Uploaded photos/videos. |
+| `valhalla_data` | Downloaded/built routing data reused on restart. |
+| Browser storage | Device-specific offline areas. |
 
-Tag backup af **PostgreSQL, mediefiler og `.env`**, herunder den oprindelige `ENCRYPTION_KEY`. En KMZ-eksport erstatter ikke en fuld backup af brugere, delinger og indstillinger.
-
-Opdatér en selvstændig installation fra projektmappen:
+Back up PostgreSQL, media and `.env`, including the original encryption key. KMZ does not replace a complete user/share/settings backup.
 
 ```sh
 git pull --ff-only
 docker compose up -d --build
 ```
 
-Appen sikrer databaseskemaet ved opstart. Behold eksisterende volumes og secrets under opdateringer. FjordHub-installationer kan opdateres gennem hubben.
+Startup ensures the database schema. Preserve volumes/secrets; managed deployments update through Hub.
 
-## Teknologi
+## Technology and structure
 
-- **App:** Next.js 15, React 19 og TypeScript.
-- **Kort:** Leaflet til hovedkortet og OpenLayers til skråfotovisningen.
-- **Database:** PostgreSQL 16 med PostGIS.
-- **Ruter:** Valhalla i en separat container med danske vejdata.
-- **Medier:** JPG/PNG og videoformaterne MP4, M4V, MOV, WebM, MKV, AVI og 3GP. Billeder optimeres til WebP med højst 2560 pixels på hver led. Videoafspilning afhænger af browserens understøttelse af format og codec.
-- **Uploads:** Filindhold valideres, og større uploads sendes i mindre dele. Mediefiler udleveres via API-ruter med kontrol af adgang til den pågældende pin eller delingslink.
-- **Login:** Argon2id-passwordhashes, signerede JWT-sessioner i HttpOnly-cookies og midlertidig låsning efter gentagne fejlforsøg. Navne, emails og gemte credentials krypteres med AES-256-GCM.
-- **Offline:** Service worker, Cache Storage og IndexedDB.
+Next.js 15, React 19, TypeScript, PostgreSQL 16/PostGIS, Leaflet/OpenLayers and Valhalla. Images optimize to WebP up to 2560 pixels per dimension. Video inputs include MP4, M4V, MOV, WebM, MKV, AVI and 3GP; playback depends on browser codecs. Content is validated, larger uploads use chunks and media APIs enforce pin/share permissions.
 
-## Projektstruktur
+Argon2id passwords, signed JWTs in HttpOnly cookies, temporary lockout and AES-256-GCM encryption protect account/recovery data. Offline viewing uses service workers, Cache Storage and IndexedDB.
 
-```text
-urban-explorer/
-  docker-compose.yml       # App, PostGIS og Valhalla
-  fjordhub.json            # Installation gennem FjordHub
-  db/                      # Oprindeligt skema og migrationsfiler
-  valhalla/                # Ruteserverens image og opsætning
-  scripts/                 # Hjælpescripts
-  docs/demo/               # GIF-demoer til README
-  app/
-    public/                # Ikoner, PWA-manifest og service worker
-    src/app/               # Sider og API-ruter
-    src/components/        # Kort, pins, ruter, deling og indstillinger
-    src/lib/               # Dataadgang, auth, medier, offline og integrationer
-    src/instrumentation.ts # Skema og initialisering ved opstart
-    src/middleware.ts      # Sessionskontrol og adgangskodeskift
-```
+`app/src/app/` holds pages/APIs, `app/src/components/` the map/pin/route/sharing UI, and `app/src/lib/` data/auth/media/offline integrations. `app/src/instrumentation.ts` ensures startup schema; `middleware.ts` checks access. `db/`, `valhalla/`, `scripts/`, `docs/demo/` and `app/public/` hold schema, routing, helpers, demos and PWA assets. See [branding/README.md](branding/README.md).
